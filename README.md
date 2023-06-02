@@ -22,6 +22,27 @@ On stdout you will see what to do.
 Just follow the white rabbit.
 Things could not be more easy than that.
 
+
+## Troubleshooting
+
+Run `tcpdump` on the system:
+
+	tcpdump -npi any udp
+
+- Look if you see BOOTP packets.
+- If there are none, this here cannot work.
+
+Check your firewall.
+
+`tcpdump` shows packets before they hit netfilter.  But if the firewall blocks the packets, they will not reach the user space.
+
+	iptables save | grep -w 67
+
+shows following (manually configured) entry at my side:
+
+	-A PVEFW-HOST-IN -s 0.0.0.0/32 -d 255.255.255.255/32 -i vmbr0 -p udp -m udp --sport 68 --dport 67 -j RETURN
+
+
 ## FAQ
 
 WTF why?
