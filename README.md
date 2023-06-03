@@ -118,6 +118,12 @@ WTF why?
 
 - Because I got angry
 
+Interface?
+
+- Use one of the output of  
+  `ip -j a s  | jq -r '.[].ifname'`
+- `bootp` can be run on different interfaces in parallel
+
 TFTP?
 
 - I am working on it
