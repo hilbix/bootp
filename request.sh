@@ -1,25 +1,55 @@
 #!/bin/bash
+#
+# This is an example boot script for ProxMox
+#
+# This needs "jq", so: sudo apt install jq
+
 
 #printf 'ARG: %q\n' "$@" >&2
 
-NAME="$1"
-INTERFACE="$2"
-MAC="$3"
-IP="$4"
+NAME="$1"		# hostname (uname -n)
+INTERFACE="$2"		# interface we use
+ARP="$3"		# socket: MAC (Currently faked from $MAC!)
+FROM="$4"		# socket: IP
+MAC="$5"		# packet: MAC from packet
+TXN="$6"		# packet: transaction number from packet (unchangeable)
+SERV="$7"		# packet: server name (if set we are not authoritative)
+FILE="$8"		# packet: file name
+IP_WANTED="$9"		# packet: wanted IP
+IP_ASSIGNED="${10}"	# packet: assigned IP (i.E. from proxied answers)
+IP_TFTP="${11}"		# packet: TFTP IP (next hop)
+IP_GW="${12}"		# packet: Gateway IP (forwarder)
 
-printf 'ARG %q\n' "${@:4}" >&2
+bye()
+{
+echo ADDR 0.0.0.0	# setting 0 as address suppresses answer
+{
+printf fail
+printf ' %q' "$@"
+printf '\n'
+} >&2
+exit
+}
 
-IP=192.168.16.7
+[ -z "$SERV" ] || [ ".$SERV" = ".$NAME" ] || bye forwarding not yet implemented
+
+bye bye
+
+#printf 'ARG %q\n' "$@" >&2
+
+IP=192.168.16.2
+
+GW="$(ip -j r g "$IP" | jq -r '.[0].prefsrc')"
 
 {
-echo "$INTERFACE MAC $MAC"
+echo "$NAME $GW IF $INTERFACE MAC $MAC"
 arp -d "$IP"
-arp -s -i "$INTERFACE" "$IP" "$MAC" temp
+arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 } >&2
 
-echo ADDR "$IP"
-echo TFTP 192.168.16.254
-echo FILE pxe
-echo VEND 0
+echo "VEND 0"		# Remove Vendor (as we are not ready to process this yet)
+echo "ADDR $IP"		# Set the IP of the VM
+echo "TFTP $GW"		# Set our interface as TFTP server
+#echo "FILE pxe"	# set the boot file
 
 exit 0
