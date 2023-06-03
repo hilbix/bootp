@@ -27,7 +27,7 @@ void _Noreturn
 OOPS(const char *s)
 {
   perror(s);
-  exit(1);
+  exit(23);
 }
 
 void
@@ -105,7 +105,7 @@ udp_bound(const char *interface, const char *host, const char *port)
         OOPS("cannot create socket");
 
       if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface)) < 0)
-        OOPS("cannot limit to interface");
+        OOPS("cannot use interface");
 
       if (bind(fd, ai->ai_addr, ai->ai_addrlen) == 0)
         break;
@@ -129,7 +129,7 @@ udp_bc(const char *interface, int port)
     OOPS("broadcast permission failed");
   
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface)) < 0)
-    OOPS("cannot limit to interface");
+    OOPS("cannot use interface");
 
   sa4.sin_family	= AF_INET;
   sa4.sin_port		= htons(port);
@@ -612,7 +612,10 @@ main(int argc, char **argv)
   FATAL(BOOTP_MINSIZE != sizeof(struct bootp));
 
   if (argc!=2)
-    OOPS("Usage: pxeboot interface");
+    {
+      fprintf(stderr, "Usage: %s interface\n", argv[0]);
+      return 42;
+    }
 
   if (getenv("DEBUG"))
     {
