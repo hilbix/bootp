@@ -133,7 +133,7 @@ udp_bc(const char *interface, int port)
 
   sa4.sin_family	= AF_INET;
   sa4.sin_port		= htons(port);
-  sa4.sin_addr.s_addr	= htonl(INADDR_BROADCAST);
+  sa4.sin_addr.s_addr	= htonl(INADDR_ANY);
 
   if (bind(fd, &sa4, sizeof sa4) < 0)
     OOPS("cannot bind to broadcast address");
@@ -239,7 +239,7 @@ print_pkt(void *buf, int len)
 {
   struct bootp *b = (void *)buf;
 
-  if (!debug) return;
+  if (!(debug&1)) return;
 
   xd("HEAD", &b->op, 4);
   XD("ID  ", b->xid);
@@ -457,7 +457,8 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
           close(fds[1]);
         }
       /* feed buffer to script?	*/
-      execlp(script, script, hostname(), interface, bmac(b), ip(4, &sa->sin_addr), bxid(b), bsname(b), bfile(b), bip(0, b), bip(1, b), bip(2, b), bip(3, b), NULL);
+      const char *mac = bmac(b); /* faked vor now --vvv */
+      execlp(script, script, hostname(), interface, mac, ip(4, &sa->sin_addr), mac, bxid(b), bsname(b), bfile(b), bip(0, b), bip(1, b), bip(2, b), bip(3, b), NULL);
       err(script);
       exit(-1);
     }
@@ -486,7 +487,6 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
 
   /* we read lines of the form
    * KEY VALUE
-   * where unknown 
    */
   for (;;)
     {
@@ -505,7 +505,7 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
       line[++cnt] = 0;
       if (!cnt) continue;
 
-      if (debug>1) printf("DEBUG: %s\n", line);
+      if (debug&2) printf("DEBUG: %s\n", line);
 
       if (!strncmp("FILE ", line, 5))
         {
@@ -525,6 +525,11 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
       if (!strncmp("ADDR ", line, 5))
         {
           b->yiaddr = fromip(line+5);
+          continue;
+        }
+      if (!strncmp("GATE ", line, 5))
+        {
+          b->giaddr = fromip(line+5);
           continue;
         }
       if (!strncmp("REPL ", line, 5))
@@ -549,6 +554,7 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
       if (ret) free(ret);
       ret = 0;
       kill(pid, SIGTERM);
+      break;
     }
   fclose(fd);
 
@@ -611,7 +617,7 @@ main(int argc, char **argv)
   if (getenv("DEBUG"))
     {
       debug	= atoi(getenv("DEBUG"));
-      printf("debugging set to %d\n", debug);
+      printf("debugging set to 0x%x\n", debug);
     }
 
   interface	= argv[1];
