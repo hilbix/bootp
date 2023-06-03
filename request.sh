@@ -33,12 +33,47 @@ exit
 
 [ -z "$SERV" ] || [ ".$SERV" = ".$NAME" ] || bye forwarding not yet implemented
 
-bye bye
+ok=false
+for vm in $(grep -il "^net.*=$MAC," /etc/pve/local/qemu-server/*.conf)
+do
+	VM="${vm##*/}"
+	VM="${VM%.*}"
+
+	conf="$(qm config "$VM" --current 1)"
+
+	case "${conf,,}" in
+	(*$'\nnet'*"=$MAC,"*)	;;
+	(*)			continue;;
+	esac
+
+	# The very line of the description must contain the Boot config
+	# IP file
+	# file cannot contain %
+
+	desc="${conf#*$'\ndescription: '}"
+	desc="${desc%%'%'*}"
+
+	ip="${desc%% *}"
+
+	case "$ip" in
+	(*.*.*.*) ;;
+	(*)	continue;
+	esac
+
+	file="${desc#"$ip"}"
+	file="${file# }"
+
+	ok=:
+
+	printf 'VM %q %q %q\n' "$VM" "$ip" "$file" >&2
+	break
+done
+
+$ok || bye no matching VM found 'for' "$MAC"
 
 #printf 'ARG %q\n' "$@" >&2
 
-IP=192.168.16.2
-
+IP="$ip"
 GW="$(ip -j r g "$IP" | jq -r '.[0].prefsrc')"
 
 {
@@ -47,9 +82,9 @@ arp -d "$IP"
 arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 } >&2
 
-echo "VEND 0"		# Remove Vendor (as we are not ready to process this yet)
-echo "ADDR $IP"		# Set the IP of the VM
-echo "TFTP $GW"		# Set our interface as TFTP server
-#echo "FILE pxe"	# set the boot file
+echo "VEND 0"				# Remove Vendor (as we are not ready to process this yet)
+echo "ADDR $IP"				# Set the IP of the VM
+echo "TFTP $GW"				# Set our interface as TFTP server
+[ -z "$file" ] || echo "FILE $file"	# set the boot file
 
 exit 0
