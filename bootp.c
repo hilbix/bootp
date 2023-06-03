@@ -19,6 +19,8 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
+#define	MAX_PKG_LEN	2000
+
 static int debug;
 
 #define	FATAL(test)	do { if (test) OOPS(#test); } while (0)
@@ -379,13 +381,13 @@ fromip(const char *ip)
 }
 
 int
-set_vend(struct bootp *b, const char *s, int max)
+set_vend(struct bootp *b, const char *s)
 {
   const char	*pos = s;
   const	int	off = offsetof(struct bootp, vend);
-  int		i;
+  int		i, max;
 
-  max	-= off;
+  max	= MAX_PKG_LEN-off;
 
   for (i=0; *pos; i++)
     {
@@ -542,7 +544,7 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
         {
           int tmp;
 
-          tmp	 = set_vend(b, line+5, sizeof data);
+          tmp	 = set_vend(b, line+5);
           if (tmp>0)
             {
               FATAL(tmp < BOOTP_MINSIZE);
@@ -628,7 +630,7 @@ main(int argc, char **argv)
 
   for (;;)
     {
-      char		buf[2000];
+      char		buf[MAX_PKG_LEN];
       int		got;
       union sa		sa;
       unsigned		salen;
