@@ -11,8 +11,11 @@ So I had to create my own.
 
 ## Usage
 
+	sudo apt install jq build-essential
+
 	git clone https://github.com/hilbix/bootp.git
 	cd bootp
+	git submodule update --init --recursive
 	make
 
 	./bootp interface
@@ -156,4 +159,7 @@ Bugs?  TODOs?
   - This is due to flags not present in script yet.
   - Hence the script cannot decide ..
 - Barely tested for now
+- This is a bit Debian centric
+  - and Proxmox
+  - as I use it
 
