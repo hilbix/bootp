@@ -33,43 +33,13 @@ exit
 
 [ -z "$SERV" ] || [ ".$SERV" = ".$NAME" ] || bye forwarding not yet implemented
 
-ok=false
-for vm in $(grep -il "^net.*=$MAC," /etc/pve/local/qemu-server/*.conf)
+IP=
+for a in request/*.sh
 do
-	VM="${vm##*/}"
-	VM="${VM%.*}"
-
-	conf="$(qm config "$VM" --current 1)"
-
-	case "${conf,,}" in
-	(*$'\nnet'*"=$MAC,"*)	;;
-	(*)			continue;;
-	esac
-
-	# The very line of the description must contain the Boot config
-	# IP file
-	# file cannot contain %
-
-	desc="${conf#*$'\ndescription: '}"
-	desc="${desc%%'%'*}"
-
-	ip="${desc%% *}"
-
-	case "$ip" in
-	(*.*.*.*) ;;
-	(*)	continue;
-	esac
-
-	file="${desc#"$ip"}"
-	file="${file# }"
-
-	ok=:
-
-	printf 'VM %q %q %q\n' "$VM" "$ip" "$file" >&2
-	break
+	. "$a"
+	[ -n "$IP" ] && break
 done
-
-$ok || bye no matching VM found 'for' "$MAC"
+[ -n "$IP" ] || bye no matching VM found 'for' "$MAC"
 
 #printf 'ARG %q\n' "$@" >&2
 
