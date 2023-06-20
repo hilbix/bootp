@@ -1,3 +1,6 @@
 [submodule "Makefiles"]
 	path = Makefiles
 	url = https://github.com/hilbix/Makefiles.git
+[submodule "xml2json"]
+	path = xml2json
+	url = https://github.com/hilbix/xml2json.git
