@@ -1,5 +1,9 @@
 #
 # ProxMox VM autodetection
+#
+# The very line of the description of a VM must contain the Boot config
+#	IPv4 file
+# file must not contain %
 
 [ -d /etc/pve/local/qemu-server ] || return
 
@@ -17,10 +21,6 @@ do
 	(*$'\nnet'*"=$MAC,"*)	;;
 	(*)			continue;;
 	esac
-
-	# The very line of the description must contain the Boot config
-	# IP file
-	# file cannot contain %
 
 	desc="${conf#*$'\ndescription: '}"
 	desc="${desc%%'%'*}"
