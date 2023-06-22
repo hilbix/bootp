@@ -19,8 +19,6 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 
-#define	MAX_PKG_LEN	2000
-
 static int debug;
 
 #define	FATAL(test)	do { if (test) OOPS(#test); } while (0)
@@ -146,7 +144,10 @@ udp_bc(const char *interface, int port)
 #define	BOOTREQUEST	1
 #define	BOOTREPLY	2
 
-#define	BOOTP_MINSIZE	4+4+2+2+4*4+16+64+128+64
+#define	BOOTP_MINSIZE	4+4+2+2+4*4+16+64+128+64	/* 300	*/
+#define	MAX_PKG_LEN	2000
+
+#define	DHCP_MAGIC_COOKIE	0x63825363		/* MSB first! */
 
 struct bootp	/* see http://www.tcpipguide.com/free/t_BOOTPMessageFormat.htm	*/
   {
