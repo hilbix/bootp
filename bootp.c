@@ -123,11 +123,11 @@ udp_bc(const char *interface, int port)
 
   if ((fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
     OOPS("cannot create UDP socket");
-  
+
   bc	= 1;
   if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &bc, sizeof bc) < 0)
     OOPS("broadcast permission failed");
-  
+
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface)) < 0)
     OOPS("cannot use interface");
 
@@ -271,7 +271,7 @@ reply(const char *script, void *buf, size_t len, struct sockaddr_in *sa, const c
   /* buf contains the already modified buffer
    * override contains a possible changed destination: [port [IP]]
    */
-  
+
   unsigned long port = 68;
   u_int32_t	ip = ntohs(b->flags & 0x8000) ? htons(INADDR_BROADCAST) : b->yiaddr;
 
@@ -280,9 +280,9 @@ reply(const char *script, void *buf, size_t len, struct sockaddr_in *sa, const c
   sa->sin_port		= htons(port);
   if (!*override)
     return 0;
-  
+
   char	*end;
-  
+
   end	= 0;
   port	= strtoul(override, &end, 0);
   if (end && *end==' ')
