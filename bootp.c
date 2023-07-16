@@ -10,6 +10,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -611,6 +612,7 @@ main(int argc, char **argv)
 {
   const char	*interface;
   int		fd;
+  int		cleanup;
 
   FATAL(BOOTP_MINSIZE != sizeof(struct bootp));
 
@@ -629,22 +631,39 @@ main(int argc, char **argv)
   interface	= argv[1];
   fd		= udp_bc(interface, 67);
 
+  cleanup	= 0;
   for (;;)
     {
       char		buf[MAX_PKG_LEN];
       int		got;
       union sa		sa;
       unsigned		salen;
+      int		flag;
+
+      flag	= fcntl(fd, F_GETFL, 0);
+      if (flag < 0)
+        OOPS("fcntl(F_GETFL)");
+      if (!(flag & O_NONBLOCK) != !cleanup)
+        {
+          flag	= cleanup ? (flag|O_NONBLOCK) : (flag&~O_NONBLOCK);
+          if (fcntl(fd, F_GETFL, flag) != flag)
+            OOPS("fcntl(F_SETFL)");
+        }
 
       salen	= sizeof sa;
       got = recvfrom(fd, buf, sizeof buf, 0, &sa.sa, &salen);
       if (got < 0)
         {
-          err("recv");
+          if (errno == EAGAIN || errno == EWOULDBLOCK)
+            cleanup	= 0;
+          else
+            err("recv");
           continue;
         }
       if (got > sizeof buf)
         OOPS("packet buffer overrun");
+      if (cleanup)
+        continue;
 
       if (sa.sa.sa_family != AF_INET)
         {
@@ -704,6 +723,8 @@ main(int argc, char **argv)
           err("send error");
           continue;
         }
+
+      cleanup	= 1;
    }
 }
 
