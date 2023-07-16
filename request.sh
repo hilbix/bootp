@@ -1,6 +1,7 @@
 #!/bin/bash
 #
-# This is an example boot script for ProxMox
+# This is an example bootp script.
+# request/*.sh are the scripts to autodetect the IP
 #
 # This needs "jq", so: sudo apt install jq
 
@@ -58,3 +59,4 @@ echo "TFTP $GW"				# Set our interface as TFTP server
 [ -z "$file" ] || echo "FILE $file"	# set the boot file
 
 exit 0
+
