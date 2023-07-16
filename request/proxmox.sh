@@ -23,6 +23,7 @@ do
 	esac
 
 	desc="${conf#*$'\ndescription: '}"
+	desc="${desc%%$'\n'*}"
 	desc="${desc%%'%'*}"
 
 	ip="${desc%% *}"
