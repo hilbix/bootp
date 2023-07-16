@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
@@ -170,10 +171,11 @@ struct bootp	/* see http://www.tcpipguide.com/free/t_BOOTPMessageFormat.htm	*/
   };
 
 void
-print_addr(struct sockaddr_in *sa, const char *what, int len)
+print_addr(struct sockaddr_in *sa, int len, const char *what, ...)
 {
   const char	*s;
   char		buf[128];
+  va_list	list;
 
 #if 1
   FATAL(sa->sin_family != AF_INET);
@@ -186,7 +188,10 @@ print_addr(struct sockaddr_in *sa, const char *what, int len)
 
   FATAL(!s);
 
-  printf("%s len %d for %s\n", what, len, s);
+  va_start(list, what);
+  vprintf(what, list);
+  va_end(list);
+  printf(" len %d addr %s\n", len, s);
 }
 
 static void
@@ -646,7 +651,7 @@ main(int argc, char **argv)
       if (!(flag & O_NONBLOCK) != !cleanup)
         {
           flag	= cleanup ? (flag|O_NONBLOCK) : (flag&~O_NONBLOCK);
-          if (fcntl(fd, F_GETFL, flag) != flag)
+          if (fcntl(fd, F_SETFL, flag))
             OOPS("fcntl(F_SETFL)");
         }
 
@@ -655,15 +660,17 @@ main(int argc, char **argv)
       if (got < 0)
         {
           if (errno == EAGAIN || errno == EWOULDBLOCK)
-            cleanup	= 0;
+            {
+              if (--cleanup)
+                printf("%d packet(s) ignored\n", cleanup);
+              cleanup	= 0;
+            }
           else
             err("recv");
           continue;
         }
       if (got > sizeof buf)
         OOPS("packet buffer overrun");
-      if (cleanup)
-        continue;
 
       if (sa.sa.sa_family != AF_INET)
         {
@@ -674,14 +681,13 @@ main(int argc, char **argv)
         }
       if (got < BOOTP_MINSIZE)
         {
-          print_addr(&sa.sa4, "too short BOOTP", got);
+          print_addr(&sa.sa4, got, "too short BOOTP");
           xd("PKT", buf, got);
           continue;
         }
       if (buf[1] != 1 || buf[2] != 6)
         {
-          printf("packet frame %2x %2x should be 01 06\n", buf[0], buf[1]);
-          print_addr(&sa.sa4, "too short BOOTP", got);
+          print_addr(&sa.sa4, got, "packet frame %2x %2x should be 01 06", buf[0], buf[1]);
           xd("PKT", buf, got);
           continue;
         }
@@ -691,19 +697,24 @@ main(int argc, char **argv)
       switch (buf[0])
         {
         default:
-          print_addr(&sa.sa4, "unknown BOOTP", got);
+          print_addr(&sa.sa4, got, "unknown BOOTP %02x", (unsigned char)buf[0]);
           continue;
         case BOOTREPLY:
-          print_addr(&sa.sa4, "BOOTREPLY", got);
+          print_addr(&sa.sa4, got, "BOOTREPLY %s", bxid((struct bootp *)buf));
           script="./reply.sh";
           continue;
         case BOOTREQUEST:
-          print_addr(&sa.sa4, "BOOTREQUEST", got);
+          print_addr(&sa.sa4, got, "BOOTREQUEST %s", bxid((struct bootp *)buf));
           script="./request.sh";
           break;
         }
-
       print_pkt(buf, got);
+
+      if (cleanup)
+        {
+          cleanup++;
+          continue;
+        }
 
       const char *line	= request(script, buf, &got, &sa.sa4, interface);
       if (!line)
@@ -716,7 +727,7 @@ main(int argc, char **argv)
        * from the script!  Including the ARP requests
        * or the interface broadcast address.
        */
-      print_addr(&sa.sa4, "sending", got);
+      print_addr(&sa.sa4, got, "sending %s", bxid((struct bootp *)buf));
       print_pkt(buf, got);
       if (sendto(fd, buf, got, 0, &sa.sa, salen) < 0)
         {
