@@ -111,6 +111,20 @@ shows following (manually configured) entry at my side (`X` is redacted data):
 	-A PVEFW-HOST-IN -s 192.168.X.Y/32 -d 192.168.X.0/24 -i vmbr0 -p udp -m udp --sport 67 --dport 68 -j RETURN
 	-A PVEFW-HOST-IN -s 0.0.0.0/32 -d 255.255.255.255/32 -i vmbr0 -p udp -m udp --sport 68 --dport 67 -j RETURN
 
+## Default `request.sh`
+
+The default `request.sh` includes all scripts in the `request/` directory
+until one sets the variable `$IP`.
+
+### `request/proxmox.sh`
+
+> In the ProxMox UI I did not find a way to add custom user variables to a VM.
+> Hence all configuration is read from the description field.  Sorry.
+
+This script extracts the `$IP` from the first line of a description of a VM.
+
+> In future more things might be added to the line, for now everything behind the first space is ignored.
+
 
 ## FAQ
 
