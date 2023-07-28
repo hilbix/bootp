@@ -514,7 +514,7 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
       line[++cnt] = 0;
       if (!cnt) continue;
 
-      if (debug&2) printf("DEBUG: %s\n", line);
+      if (debug&4) printf("DEBUG: %s\n", line);
 
       if (!strncmp("FILE ", line, 5))
         {
@@ -676,19 +676,22 @@ main(int argc, char **argv)
         {
           printf("socket family %d: %x not AF_INET %x\n", got, (int)sa.sa.sa_family, (int)AF_INET);
           xd("ADR", &sa, salen);
-          xd("PKT", buf, got);
+          if (debug&2)
+            xd("PKT", buf, got);
           continue;
         }
       if (got < BOOTP_MINSIZE)
         {
           print_addr(&sa.sa4, got, "too short BOOTP");
-          xd("PKT", buf, got);
+          if (debug&2)
+            xd("PKT", buf, got);
           continue;
         }
       if (buf[1] != 1 || buf[2] != 6)
         {
           print_addr(&sa.sa4, got, "packet frame %2x %2x should be 01 06", buf[0], buf[1]);
-          xd("PKT", buf, got);
+          if (debug&2)
+            xd("PKT", buf, got);
           continue;
         }
 
