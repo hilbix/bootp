@@ -22,6 +22,13 @@
 #include <arpa/inet.h>
 
 static int debug;
+#define	DEBUG_RECV	1
+#define	DEBUG_SEND	2
+#define	DEBUG_BOOTP	4
+#define	DEBUG_DHCP	8
+#define	DEBUG_BUG	16
+#define	DEBUG_CHAT	32
+#define	DEBUG(X)	(debug&DEBUG_##X)
 
 #define	FATAL(test)	do { if (test) OOPS(#test); } while (0)
 
@@ -149,7 +156,7 @@ udp_bc(const char *interface, int port)
 #define	BOOTP_MINSIZE	4+4+2+2+4*4+16+64+128+64	/* 300	*/
 #define	MAX_PKG_LEN	2000
 
-#define	DHCP_MAGIC_COOKIE	0x63825363		/* MSB first! */
+const char DHCP_MAGIC[]	= { 0x63, 0x82, 0x53, 0x63 };
 
 struct bootp	/* see http://www.tcpipguide.com/free/t_BOOTPMessageFormat.htm	*/
   {
@@ -168,6 +175,15 @@ struct bootp	/* see http://www.tcpipguide.com/free/t_BOOTPMessageFormat.htm	*/
     char		sname[64];	/* opt: wanted/replying server name */
     char		file[128];	/* PXE filename	*/
     unsigned char	vend[64];	/* ignored: vendor-specific area */
+  };
+
+struct decoded
+  {
+    unsigned char	*data;
+    int			size;
+    uint16_t		pos[256];
+    uint8_t		len[256];
+    uint8_t		bytes[256][4];
   };
 
 void
@@ -195,9 +211,9 @@ print_addr(struct sockaddr_in *sa, int len, const char *what, ...)
 }
 
 static void
-xd(const char *what, void *ptr, int len)
+xd_(const char *what, void *ptr, int len, int w)
 {
-  int	w = 32, i, pos, max, end;
+  int	i, pos, max, end;
 
   for (end=len; --end>=0; )
     if (((unsigned char *)ptr)[end])
@@ -241,27 +257,206 @@ xd(const char *what, void *ptr, int len)
     }
 }
 
+static void
+xd(const char *what, void *ptr, int len)
+{
+  xd_(what, ptr, len, 32);
+}
+
 #define	XD(what,elem)	xd(what,&(elem),sizeof (elem))
 
+const char *
+DHCPtype(const unsigned char *buf)
+{
+  switch (buf[2])
+    {
+      case 1:	return "DISCOVER";
+      case 2:	return "OFFER";
+      case 3:	return "REQUEST";
+      case 4:	return "DECLINE";
+      case 5:	return "ACK";
+      case 6:	return "NAK";
+      case 7:	return "RELEASE";
+      case 8:	return "INFORM";
+    }
+  return 0;
+}
+
+struct dhcps
+  {
+    const char	*name;
+    int		n;
+    const char *(*fn)(const unsigned char *s);
+  } dhcps[] =
+  { { "NOP"		, -1	}
+  , { "MASK"		, -5	}
+  , { "TZ"		, -5	}
+  , { "routers"		,  0	}
+  , { "times"		,  0	}
+  , { "names"		,  0	}
+  , { "DNS"		,  0	}
+  , { "logs"		,  0	}
+  , { "cookies"		,  0	}
+  , { "LPR"		,  0	}
+  , { "impress"		,  0	}
+  , { "RLP"		,  0	}
+  , { "Name"		,  0	}
+  , { "bootlen"		,  2	}
+  , { "dumpfile"	,  0	}
+  , { "domain"		,  0	}
+  , { "swap"		,  4	}
+  , { "root"		,  0	}
+  , { "extension"	,  0	}
+  , { "routing"		,  0	}
+  , { "srcrouting"	,  1	}
+  , { "srcfilter"	,  0	}
+  , { "maxudp"		,  2	}
+  , { "TTLudp"		,  1	}
+  , { "PMTU"		,  4	}
+  , { "PMTUtable"	,  0	}
+  , { "MTU"		,  2	}
+  , { "local"		,  1	}
+  , { "broadcast"	,  4	}
+  , { "maskget"		,  1	}
+  , { "maskout"		,  1	}
+  , { "routerget"	,  1	}
+  , { "routersol"	,  4	}
+  , { "routes"		,  0	}
+  , { "trailers"	,  1	}
+  , { "arptimeout"	,  4	}
+  , { "ethencaps"	,  1	}
+  , { "TTLtcp"		,  1	}
+  , { "keepalive"	,  4	}
+  , { "garbage"		,  1	}
+  , { "NISdomain"	,  0	}
+  , { "29",0 }
+  , { "2a",0 }
+  , { "2b",0 }
+  , { "2c",0 }
+  , { "2d",0 }
+  , { "2e",0 }
+  , { "2f",0 }
+  , { "30",0 }
+  , { "31",0 }
+  , { "32",0 }
+  , { "33",0 }
+  , { "34",0 }
+  , { "DHCPtype"	,  1	, DHCPtype	}
+  , { "DHCPserver"	,  4	}
+  , { "DHCPparam"	,  0	}
+  , { "message"		,  0	}
+  , { "maxsize"		,  2	}
+  , { "renew"		,  4	}
+  , { "rebind"		,  4	}
+  , { "vendorcls"	,  0	}
+  , { "clientId"	,  0	}
+  , { "TFTP"		,  0	}
+  , { "BootFile"	,  0	}
+  , { "NISplusdom"	,  0	}
+  , { "41",0 }
+  , { "42",0 }
+  , { "43",0 }
+  , { "44",0 }
+};
+
 void
-print_pkt(void *buf, int len)
+decode_dhcp(struct decoded *decode, int debugging)
+{
+  unsigned char	c;
+  int		i;
+  unsigned char	*buf	= decode->data;
+  int		len	= decode->size;
+
+  c	= 0;
+  for (i=0; i<len; )
+    {
+      char		tmp[40];
+      const char	*t;
+      int		n, p;
+      const char *(*fn)(const unsigned char *);
+
+      n	= 5;
+      switch (c = buf[i])
+        {
+        case 0xff:
+          p	= 1;
+          t	= "END";
+          n	= len-i;
+          break;
+        default:
+          p	= 2;
+          t	= "?";
+          n	= 2 + buf[i+1];
+          break;
+        }
+      fn	= 0;
+      if (c < sizeof dhcps / sizeof *dhcps)
+        {
+          struct dhcps *d = dhcps+c;
+
+          t	= d->name;
+          if (d->n < 0)
+            {
+              n	= -d->n;
+              p	= 1;
+            }
+          else if (!d->n || d->n+2 == n)
+            fn	= d->fn;
+          else if (debugging)
+            printf("DHCP fixed length mismatch, should be %d\n", d->n);
+        }
+      decode->len[c]	= n-p;
+      decode->pos[c]	= i+p;
+      memcpy(&decode->bytes[c], buf+i+p, n-p > 4 ? 4 : n-p);
+      if (debugging)
+        {
+          snprintf(tmp, sizeof tmp, "DHCP %4x %10s %3d %3d", i, t, c, n);
+          if (fn && (t = fn(buf+i))!=0)
+            printf("%s %s\n", tmp, t);
+          else
+            xd_(tmp, buf+i, i+n>len ? len-i : n, 24);
+        }
+      i	+= n;
+    }
+  if (!debugging)
+    return;
+  if (i>len)
+    printf("DHCP %4x option truncated\n", len);
+  else if (c!=0xff)
+    printf("DHCP %4x missing END marker\n", len);
+}
+
+void
+print_pkt(void *buf, int len, struct decoded *decode, int debugging)
 {
   struct bootp *b = (void *)buf;
 
-  if (!(debug&1)) return;
-
-  xd("HEAD", &b->op, 4);
-  XD("ID  ", b->xid);
-  XD("SEC ", b->secs);
-  XD("FLAG", b->flags);
-  XD("WANT", b->ciaddr);
-  XD("ADR ", b->yiaddr);
-  XD("TFTP", b->siaddr);
-  XD("GATE", b->giaddr);
-  XD("MAC ", b->chaddr);
-  XD("NAME", b->sname);
-  XD("FILE", b->file);
-  xd("VEND", &b->vend, len - offsetof(struct bootp, vend));
+  if (debugging && DEBUG(BOOTP))
+    {
+      xd("HEAD", &b->op, 4);
+      XD("ID  ", b->xid);
+      XD("SEC ", b->secs);
+      XD("FLAG", b->flags);
+      XD("WANT", b->ciaddr);
+      XD("ADR ", b->yiaddr);
+      XD("TFTP", b->siaddr);
+      XD("GATE", b->giaddr);
+      XD("MAC ", b->chaddr);
+      XD("NAME", b->sname);
+      XD("FILE", b->file);
+      xd("VEND", b->vend, len - offsetof(struct bootp, vend));
+    }
+  if (decode && len > offsetof(struct bootp, vend)+sizeof DHCP_MAGIC)
+    {
+      if (!memcmp(b->vend, DHCP_MAGIC, sizeof DHCP_MAGIC))
+        {
+          decode->data	= b->vend + sizeof DHCP_MAGIC;
+          decode->size	= len - offsetof(struct bootp, vend) - sizeof DHCP_MAGIC;
+          decode_dhcp(decode, debugging && DEBUG(DHCP));
+        }
+      else if (debugging && DEBUG(DHCP))
+        printf("DHCP magic missing: %02x%02x%02x%02x\n", b->vend[0], b->vend[1], b->vend[2], b->vend[3]);
+    }
 }
 
 union sa
@@ -424,16 +619,276 @@ set_vend(struct bootp *b, const char *s)
   return i+off;
 }
 
+int
+putN(unsigned char *buf, unsigned long u, int n)
+{
+  while (--n>=0)
+    {
+      buf[n]	= u;
+      u	>>= 8;
+    }
+  return u!=0;
+}
+
+const char *
+getIP1(const char *p, unsigned char *buf)
+{
+  unsigned long	u;
+  char		*end;
+
+  u = strtoul(p, &end, 10);
+  if (!end || end == p || u>255)
+    return 0;
+  *buf	= u;
+  return end;
+}
+
+int
+putIP(unsigned char *buf, const char **s)
+{
+  const	char *p	= *s;
+
+  p = getIP1(p, buf);
+  if (!p || *p++!='.') return 1;
+  p = getIP1(p, buf+1);
+  if (!p || *p++!='.') return 1;
+  p = getIP1(p, buf+2);
+  if (!p || *p++!='.') return 1;
+  p = getIP1(p, buf+3);
+  if (!p) return 1;
+
+  *s	= p;
+  return 0;
+}
+
+int
+unhex(char c)
+{
+  if (c>='0' && c<='9') return c-'0';
+  if (c>='A' && c<='F') return c-'A'+10;
+  if (c>='a' && c<='f') return c-'a'+10;
+  return -1;
+}
+
+int
+putSTR(unsigned char *buf, const char **s, int max, int hex)
+{
+  const	char	*p	= *s;
+  int		n;
+  
+  for (n=0;; p++, n++)
+    {
+      int	c;
+
+      if (hex)
+        while (*p == ' ') p++;
+      if (!(c = (unsigned char)*p))
+        break;
+      if (hex)
+        {
+          if (!p[1])
+            {
+              printf("uneven number of hex digits!\n");
+              return -1;
+            }
+          c	= (unhex(c) << 4) | unhex(*++p);
+          if (c<0)
+            {
+              printf("invalid hex digits!\n");
+              return -1;
+            }
+        }
+      *buf++ = c;
+    }
+  *s	= p;	/* *s == 0	*/
+  return n;
+}
+
+/* DHCP NR type data
+ *
+ * NR is decimal, not HEX, see dhcp.md
+ *
+ * types:
+ * str	copy data as string
+ * hex	hex bytes with or without spaces
+ * ip	IPv4 in network order
+ * mask	IPv4/MASK pairs
+ * 1	decimal 8 bit value
+ * 2	decimal 16 bit value
+ * 4	decimal 32 bit value
+ */
+int
+set_dhcp(unsigned char *buf, int off, const char *s)
+{
+  int		max = MAX_PKG_LEN - offsetof(struct bootp, vend);
+  unsigned long	nr;
+  char		t;
+  int		l, i;
+
+  /* check for buf being already at end here?	*/
+  for (;;)
+    {
+      char	*end;
+
+      nr	= strtoul(s, &end, 0);
+      if (!end || end == s || nr>255)
+        {
+          printf("invalid DHCP at %d: %s\n", off, s);
+          return -1;
+        }
+
+      if (off>=max)
+        {
+          printf("overflow DHCP %lu at %d: %s\n", nr, off, s);
+          return -1;
+        }
+
+      s			= end;
+      buf[off++]	= nr;
+      while (*s == ' ') s++;
+
+      if (nr==255)
+        {
+          if (*s)
+            {
+              printf("END option cannot have additional data at %d: %s\n", off, s);
+              return -1;
+            }
+          max	= sizeof ((struct bootp *)0)->vend;
+          while (off<max)
+            buf[off++] = 0;
+          return off;
+        }
+      if (nr)
+        break;
+      if (!*s)
+        return off;
+    }
+  if (off>=max-2)
+    {
+      printf("overflow DHCP %lu at %d: %s\n", nr, off, s);
+      return -1;
+    }
+  l	= off-1;		/* buf[l] != 0	*/
+  if (nr == 1)
+    t	= 'i';
+  else if (nr == 2)
+    t	= '4';
+  else
+    {
+      buf[l = off++] = 0;	/* buf[l] = 0	*/
+      t	= *s;
+      while (*s && *s!=' ') s++;
+      while (*s == ' ') s++;
+    }
+  i	= 0;
+  do
+    {
+      int	k;
+
+      if (!*s || !t)
+        {
+          printf("premature end of line for DHCP %lu at %d after type %c\n", nr, off, t);
+          return -1;
+        }
+      switch (t)
+        {
+        default:
+          printf("unknown type %c of line for DHCP %lu at %d\n", t, nr, off);
+          return -1;
+        case '1': k=1; break;
+        case '2': k=2; break;
+        case '4': k=4; break;
+        case 'm': k=8; break;
+        case 'i': k=4; break;
+        case 's':
+          k	= putSTR(buf+off, &s, max-off, 0);
+          break;
+        case 'h':
+          k	= putSTR(buf+off, &s, max-off, 16);
+          break;
+        }
+      if (k<0 || off+k>=max)
+        {
+          printf("overflow DHCP %lu at %d: %s\n", nr, off, s);
+          return -1;
+        }
+      i	+= k;
+      switch (t)
+        {
+        unsigned long	v;
+        char		*end;
+        case '1':
+        case '2':
+        case '4':
+          v	= strtoul(s, &end, 0);
+          if (!end || end == s)
+            {
+              printf("DHCP %lu type %c needs number at %d: %s\n", nr, t, off, s);
+              return -1;
+            }
+          if (putN(buf+off, v, k))
+            {
+              printf("DHCP %lu type %c overflow at %d: %s\n", nr, t, off, s);
+              return -1;
+            }
+          s	= end;
+          break;
+        case 'm':
+          if (putIP(buf+off, &s) || *s != '/')
+            {
+              printf("DHCP %lu mask needs ip/mask at %d: %s\n", nr, off, s);
+              return -1;
+            }
+          s++;
+        case 'i':
+          if (putIP(buf+off, &s) || (*s && *s!=' '))
+            {
+              printf("DHCP %lu needs ip at %d: %s\n", nr, off, s);
+              return -1;
+            }
+          break;
+        }
+      off	+= k;
+      while (*s == ' ') s++;
+    } while (*s);
+  if (i>0 && i<256 && !buf[l])
+    buf[l]	= i;
+  else if (!buf[l] || i!=4)
+    {
+      printf("wrong length for type %c for DHCP %lu at %d\n", t, nr, off);
+      return -1;
+    }
+  return off;
+}
+
+void
+PUT_env(const char *s, ...)
+{
+  va_list	list;
+  char		tmp[200];
+
+  va_start(list, s);
+  vsnprintf(tmp, sizeof tmp, s, list);
+  va_end(list);
+#if 0
+  fprintf(stderr, "%s\n", tmp); fflush(stderr);
+#endif
+  putenv(strdup(tmp));
+}
+
 
 /* fork a script with parameters.
  * process output to adapt buffer
  */
 char *
-request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const char *interface)
+request(const char *script, void *buf, int *len, struct decoded *decode, struct sockaddr_in *sa, const char *interface)
 {
   struct bootp	*b = buf;
   int		fds[2];
   pid_t		pid;
+  int		dhcp	= 0;
+  FILE		*fd;
 
 #if 0
   /* let script decide	*/
@@ -465,15 +920,64 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
           dup2(fds[1], 1);
           close(fds[1]);
         }
-      /* feed buffer to script?	*/
-      const char *mac = bmac(b); /* faked vor now --vvv */
+
+      /* feed buffer to script as a child	*/
+      if (pipe(fds))
+        {
+          err("pipe()");
+          exit(-1);
+        }
+      if ((pid = fork()) == 0)
+        {
+          int	ret;
+
+          close(fds[0]);
+          fd	= fdopen(fds[1], "w");
+          if (!fd)
+            {
+              err("fdopen");
+              exit(-1);
+            }
+          /* ignore errors, pipe closed is too often	*/
+          fwrite(buf, *len, 1, fd);
+          fflush(fd);
+          ret = ferror(fd);
+          fclose(fd);
+          exit(ret ? -1 : 0);
+        }
+      close(fds[1]);
+      if (fds[0] != 0)
+        {
+          dup2(fds[0], 0);
+          close(fds[0]);
+        }
+
+      int i, x;
+
+      /* build environment from decode	*/
+      for (i=0; i<256; i++)
+        if ((x = decode->pos[i])!=0)
+          {
+            static char bytes[] = "DHCP%d_bytes=%02x %02x %02x %02x";
+
+            PUT_env("DHCP%d_pos=%d", i, x);
+            x	= decode->len[i];
+            PUT_env("DHCP%d_len=%d", i, x);
+            if (x<=0) continue;
+            if (x>4)
+              x	= 4;
+            x	= 12 + 5*x;
+            bytes[x] = 0;
+            PUT_env(bytes, i, decode->bytes[i][0], decode->bytes[i][1], decode->bytes[i][2], decode->bytes[i][3]);
+            bytes[x] = ' ';
+            bytes[12 + 5*4] = 0;
+          }
+      const char *mac = bmac(b); /* faked for now --vvv */
       execlp(script, script, hostname(), interface, mac, ip(4, &sa->sin_addr), mac, bxid(b), bsname(b), bfile(b), bip(0, b), bip(1, b), bip(2, b), bip(3, b), NULL);
       err(script);
       exit(-1);
     }
   close(fds[1]);
-
-  FILE	*fd;
 
   fd	= fdopen(fds[0], "r");
   if (!fd)
@@ -514,8 +1018,15 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
       line[++cnt] = 0;
       if (!cnt) continue;
 
-      if (debug&4) printf("DEBUG: %s\n", line);
+      if (DEBUG(CHAT)) printf("CHAT: %s\n", line);
 
+#if 0
+      if (!strncmp("SECS ", line, 5))
+        {
+          b->secs = 0;
+          continue;
+        }
+#endif
       if (!strncmp("FILE ", line, 5))
         {
           my_strncpy(b->file, line+5, sizeof b->file);
@@ -555,7 +1066,25 @@ request(const char *script, void *buf, int *len, struct sockaddr_in *sa, const c
           if (tmp>0)
             {
               FATAL(tmp < BOOTP_MINSIZE);
+              dhcp	= 0;
               *len	= tmp;
+              continue;
+            }
+        }
+      if (!strncmp("DHCP ", line, 5))
+        {
+          int	tmp;
+
+          if (!dhcp)
+            {
+              dhcp = sizeof DHCP_MAGIC;
+              memcpy(b->vend, DHCP_MAGIC, sizeof DHCP_MAGIC);
+            }
+          tmp	 = set_dhcp(b->vend, dhcp, line+5);
+          if (tmp>0)
+            {
+              dhcp	= tmp;
+              *len	= tmp + offsetof(struct bootp, vend);
               continue;
             }
         }
@@ -639,7 +1168,8 @@ main(int argc, char **argv)
   cleanup	= 0;
   for (;;)
     {
-      char		buf[MAX_PKG_LEN];
+      static char	buf[MAX_PKG_LEN];
+      static struct decoded decode;
       int		got;
       union sa		sa;
       unsigned		salen;
@@ -676,21 +1206,21 @@ main(int argc, char **argv)
         {
           printf("socket family %d: %x not AF_INET %x\n", got, (int)sa.sa.sa_family, (int)AF_INET);
           xd("ADR", &sa, salen);
-          if (debug&2)
+          if (DEBUG(BUG))
             xd("PKT", buf, got);
           continue;
         }
-      if (got < BOOTP_MINSIZE)
+      if (got < offsetof(struct bootp, vend) + 5)
         {
-          print_addr(&sa.sa4, got, "too short BOOTP");
-          if (debug&2)
+          print_addr(&sa.sa4, got, "too short BOOTP (min %d)", (int)(offsetof(struct bootp, vend) + 5));
+          if (DEBUG(BUG))
             xd("PKT", buf, got);
           continue;
         }
       if (buf[1] != 1 || buf[2] != 6)
         {
           print_addr(&sa.sa4, got, "packet frame %2x %2x should be 01 06", buf[0], buf[1]);
-          if (debug&2)
+          if (DEBUG(BUG))
             xd("PKT", buf, got);
           continue;
         }
@@ -711,7 +1241,9 @@ main(int argc, char **argv)
           script="./request.sh";
           break;
         }
-      print_pkt(buf, got);
+
+      memset(decode.pos, 0, sizeof decode.pos);
+      print_pkt(buf, got, &decode, DEBUG(RECV));
 
       if (cleanup)
         {
@@ -719,7 +1251,7 @@ main(int argc, char **argv)
           continue;
         }
 
-      const char *line	= request(script, buf, &got, &sa.sa4, interface);
+      const char *line	= request(script, buf, &got, &decode, &sa.sa4, interface);
       if (!line)
         continue;	/* something failed	*/
 
@@ -730,8 +1262,8 @@ main(int argc, char **argv)
        * from the script!  Including the ARP requests
        * or the interface broadcast address.
        */
+      print_pkt(buf, got, &decode, DEBUG(SEND));
       print_addr(&sa.sa4, got, "sending %s", bxid((struct bootp *)buf));
-      print_pkt(buf, got);
       if (sendto(fd, buf, got, 0, &sa.sa, salen) < 0)
         {
           err("send error");
