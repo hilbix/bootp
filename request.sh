@@ -7,6 +7,8 @@
 
 
 #printf 'ARG: %q\n' "$@" >&2
+#printf 'DHCP_TYPE=%q\n' "$DHCP53_bytes" >&2
+#set | grep ^DHCP >&2
 
 NAME="$1"		# hostname (uname -n)
 INTERFACE="$2"		# interface we use
@@ -45,7 +47,19 @@ done
 #printf 'ARG %q\n' "$@" >&2
 
 IP="$ip"
-GW="$(ip -j r g "$IP" | jq -r '.[0].prefsrc')"
+GWA="$(ip -j r g "$IP")"
+GW="$(jq -r '.[0].prefsrc' <<<"$GWA")"
+GWDEV="$(jq -r '.[0].dev' <<<"$GWA")"
+GWBITS="$(ip -j a s "$GWDEV" | jq '.[].addr_info[] | select(.family=="inet").prefixlen')"
+GWbits=$[ 0xffffffff << (32 - GWBITS) ];
+case "$DHCP53_bytes" in
+(01)	printf 'DHCP 53 1 02\n';;
+(03)	printf 'DHCP 53 1 05\n';;
+esac
+#printf 'DHCP 1 %d.%d.%d.%d\n' $[ (GWbits>>24)&0xff ] $[ (GWbits>>16)&0xff ] $[ (GWbits>>8)&0xff ] $[ (GWbits>>0)&0xff ];
+printf 'DHCP 54 i %q\n' "$GW"
+printf 'DHCP 51 4 %d\n' 1000000
+printf 'DHCP 255\n'
 
 {
 echo "$NAME $GW IF $INTERFACE MAC $MAC"
@@ -53,10 +67,12 @@ arp -d "$IP"
 arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 } >&2
 
-echo "VEND 0"				# Remove Vendor (as we are not ready to process this yet)
+#echo "SECS 0"
 echo "ADDR $IP"				# Set the IP of the VM
 echo "TFTP $GW"				# Set our interface as TFTP server
+echo "HOST $GW"
 [ -z "$file" ] || echo "FILE $file"	# set the boot file
 
+#sleep 5
 exit 0
 
