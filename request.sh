@@ -25,53 +25,99 @@ IP_GW="${12}"		# packet: Gateway IP (forwarder)
 
 bye()
 {
-echo ADDR 0.0.0.0	# setting 0 as address suppresses answer
-{
-printf fail
-printf ' %q' "$@"
-printf '\n'
-} >&2
-exit
+  echo ADDR 0.0.0.0	# setting 0 as address suppresses answer
+  {
+  printf fail
+  printf ' %q' "$@"
+  printf '\n'
+  } >&2
+  exit
 }
 
 [ -z "$SERV" ] || [ ".$SERV" = ".$NAME" ] || bye forwarding not yet implemented
 
-IP=
 for a in request/*.sh
 do
+	# '' for default
+	IP=		# MUST interface IPv4.  '-' or 0.0.0.0 to ignore this MAC
+	MASK=		# OPT: interface netmask, either /CIDR or 255.x.y.z
+	GW=		# OPT: default router
+	LEASE=		# OPT: time in seconds, default 1000000
+	TFTP=		# OPT: TFTP, default: GW
+	SECS=		# OPT: seconds since boot
+	FLAG=		# OPT: flags
 	. "$a"
 	[ -n "$IP" ] && break
 done
 [ -n "$IP" ] || bye no matching VM found 'for' "$MAC"
+[ .- != ".$IP" ] && [ 0.0.0.0 != "$IP" ] || bye ignoring "$MAC"
 
-#printf 'ARG %q\n' "$@" >&2
+run()
+{
+  local -n ___VAR___="$1"
 
-IP="$ip"
-GWA="$(ip -j r g "$IP")"
-GW="$(jq -r '.[0].prefsrc' <<<"$GWA")"
-GWDEV="$(jq -r '.[0].dev' <<<"$GWA")"
-GWBITS="$(ip -j a s "$GWDEV" | jq '.[].addr_info[] | select(.family=="inet").prefixlen')"
-GWbits=$[ 0xffffffff << (32 - GWBITS) ];
-case "$DHCP53_bytes" in
-(01)	printf 'DHCP 53 1 02\n';;
-(03)	printf 'DHCP 53 1 05\n';;
+  [ -n "$___VAR___" ] && return
+  ___VAR___="$("${@:2}")" || bye $?: run "$@"
+}
+
+def()
+{
+  local -n ___VAR___="$1"
+
+  [ -n "$___VAR___" ] && return
+  [ 2 -ge $# ] || printf -v ___VAR___ ' %q' "${@:3}"
+  printf -v ___VAR___ %s%s "$2" "$___VAR___"
+}
+
+run	GW_J_R	ip -j r g "$IP"
+run	GW_IP	jq -r '.[0].prefsrc' <<<"$GW_J_R"
+run	GW_DEV	jq -r '.[0].dev' <<<"$GW_J_R"
+run	GW_J_A	ip -j a s "$GW_DEV"
+run	GW_CIDR	jq -r '.[].addr_info[] | select(.family=="inet").prefixlen' <<<"$GW_J_A"
+def	MASK	"/$GW_CIDR"
+def	TFTP	"$GW"
+def	FILE	''
+def	FLAG	0
+def	SECS	0
+def	LEASE	1000000
+case "$MASK" in
+(/*)	bits=$[ 0xffffffff << (32 - "${MASK#/}") ];
+	printf -v MASK '%d.%d.%d.%d' $[ (bits>>24)&0xff ] $[ (bits>>16)&0xff ] $[ (bits>>8)&0xff ] $[ (bits>>0)&0xff ];
+	;;
 esac
-#printf 'DHCP 1 %d.%d.%d.%d\n' $[ (GWbits>>24)&0xff ] $[ (GWbits>>16)&0xff ] $[ (GWbits>>8)&0xff ] $[ (GWbits>>0)&0xff ];
-printf 'DHCP 54 i %q\n' "$GW"
-printf 'DHCP 51 4 %d\n' 1000000
-printf 'DHCP 255\n'
+
+out()
+{
+  case "${@:$#}" in
+  (''|-)	;;
+  (*)		printf %q "$1"; printf ' %q' "${@:2}"; printf '\n';;
+  esac
+}
+
+# XXX TODO XXX verify DHCP request for validity
 
 {
-echo "$NAME $GW IF $INTERFACE MAC $MAC"
+echo "$NAME $GW_IP IF $INTERFACE MAC $MAC IP $IP"
 arp -d "$IP"
 arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 } >&2
 
-#echo "SECS 0"
-echo "ADDR $IP"				# Set the IP of the VM
-echo "TFTP $GW"				# Set our interface as TFTP server
-echo "HOST $GW"
-[ -z "$file" ] || echo "FILE $file"	# set the boot file
+out ADDR "$IP"				# Set the IP of the VM
+out TFTP "$TFTP"			# Set our interface as TFTP server
+out HOST "$GW_IP"			# output BOOTP/DHCP server IP
+out FILE "$FILE"			# output boot file
+out SECS "$SECS"
+out FLAG "$FLAG"
+
+case "$DHCP53_bytes" in
+(01)	out DHCP 53 1 02;;	# DISCOVER => OFFER
+(03)	out DHCP 53 1 05;;	# REQUEST => ACK    -- we probably should be a bit more clever here
+(*)	out VEND 0; printf 'unsupported DHCP type %q\n' "$DHCP53_bytes" >&2; exit 0;;
+esac
+out DHCP 54 i "$GW"
+out DHCP 1 "$MASK"
+out DHCP 51 4 "$LEASE"
+out DHCP 255
 
 #sleep 5
 exit 0
