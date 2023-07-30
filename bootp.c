@@ -26,8 +26,8 @@ static int debug;
 #define	DEBUG_SEND	2
 #define	DEBUG_BOOTP	4
 #define	DEBUG_DHCP	8
-#define	DEBUG_BUG	16
-#define	DEBUG_CHAT	32
+#define	DEBUG_CHAT	16
+#define	DEBUG_MISC	32
 #define	DEBUG(X)	(debug&DEBUG_##X)
 
 #define	FATAL(test)	do { if (test) OOPS(#test); } while (0)
@@ -582,6 +582,18 @@ fromip(const char *ip)
   return in->sin_addr.s_addr;
 }
 
+uint16_t
+from16(const char *number)
+{
+  return htons(strtoul(number, NULL, 0));
+}
+
+uint32_t
+from32(const char *number)
+{
+  return htons(strtoul(number, NULL, 0));
+}
+
 int
 set_vend(struct bootp *b, const char *s)
 {
@@ -1019,27 +1031,19 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
       if (!cnt) continue;
 
       if (DEBUG(CHAT)) printf("CHAT: %s\n", line);
-
-#if 0
       if (!strncmp("SECS ", line, 5))
         {
-          b->secs = 0;
+          b->secs = from16(line+5);
           continue;
         }
-#endif
-      if (!strncmp("FILE ", line, 5))
+      if (!strncmp("FLAG ", line, 5))
         {
-          my_strncpy(b->file, line+5, sizeof b->file);
+          b->flags = from16(line+5);
           continue;
         }
-      if (!strncmp("HOST ", line, 5))
+      if (!strncmp("WANT ", line, 5))
         {
-          my_strncpy(b->sname, line+5, sizeof b->sname);
-          continue;
-        }
-      if (!strncmp("TFTP ", line, 5))
-        {
-          b->siaddr = fromip(line+5);
+          b->ciaddr = fromip(line+5);
           continue;
         }
       if (!strncmp("ADDR ", line, 5))
@@ -1047,15 +1051,27 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
           b->yiaddr = fromip(line+5);
           continue;
         }
+      if (!strncmp("TFTP ", line, 5))
+        {
+          b->siaddr = fromip(line+5);
+          continue;
+        }
       if (!strncmp("GATE ", line, 5))
         {
           b->giaddr = fromip(line+5);
           continue;
         }
-      if (!strncmp("REPL ", line, 5))
+#if 0
+    unsigned char	chaddr[16];	/* MAC	*/
+#endif
+      if (!strncmp("HOST ", line, 5))
         {
-          if (ret) free(ret);
-          ret	= strdup(line+5);
+          my_strncpy(b->sname, line+5, sizeof b->sname);
+          continue;
+        }
+      if (!strncmp("FILE ", line, 5))
+        {
+          my_strncpy(b->file, line+5, sizeof b->file);
           continue;
         }
       if (!strncmp("VEND ", line, 5))
@@ -1088,6 +1104,12 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
               continue;
             }
         }
+      if (!strncmp("REPL ", line, 5))
+        {
+          if (ret) free(ret);
+          ret	= strdup(line+5);
+          continue;
+        }
       printf("terminating script %s due to wrong line: %s\n", script, line);
       if (ret) free(ret);
       ret = 0;
@@ -1102,12 +1124,13 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
   if (!*b->sname)
     my_strncpy(b->sname, hostname(), sizeof b->sname);
 
+  int flag = WNOHANG;
   for (;;)
     {
       pid_t	id;
       int	status;
 
-      id	= waitpid(-1, &status, WNOHANG);
+      id	= waitpid(-1, &status, flag);
       if (id == (pid_t)-1)
         {
           if (errno == EINTR) continue;
@@ -1119,11 +1142,11 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
             {
               int code	= WEXITSTATUS(status);
               if (!code)
-                return b->yiaddr ? ret : 0;
-              printf("script %s failed with code %d\n", script, WEXITSTATUS(status));
+                break;
+              printf("script %s failed with code %d\n", script, code);
             }
           else if (WIFSIGNALED(status))
-            printf("script %s terminated with signal %d\n", script, WTERMSIG(status));
+            printf("script %s terminated with signal %d\n", script, (int)WTERMSIG(status));
           else
             printf("script %s termination status unsupported (%x)\n", script, status);
           return 0;
@@ -1135,10 +1158,12 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
            * (We cannot check for early termination,
            * because it can take time to read the pipe.)
            */
-          printf("Script %s must not close stdout before terminating.\n", script);
-          return 0;
+	  if (DEBUG(MISC))
+            printf("Script %s should not close stdout before terminating.\n", script);
+          flag	= 0;
         }
     }
+  return b->yiaddr ? ret : 0;
 }
 
 int
@@ -1206,21 +1231,21 @@ main(int argc, char **argv)
         {
           printf("socket family %d: %x not AF_INET %x\n", got, (int)sa.sa.sa_family, (int)AF_INET);
           xd("ADR", &sa, salen);
-          if (DEBUG(BUG))
+          if (DEBUG(MISC))
             xd("PKT", buf, got);
           continue;
         }
       if (got < offsetof(struct bootp, vend) + 5)
         {
           print_addr(&sa.sa4, got, "too short BOOTP (min %d)", (int)(offsetof(struct bootp, vend) + 5));
-          if (DEBUG(BUG))
+          if (DEBUG(MISC))
             xd("PKT", buf, got);
           continue;
         }
       if (buf[1] != 1 || buf[2] != 6)
         {
           print_addr(&sa.sa4, got, "packet frame %2x %2x should be 01 06", buf[0], buf[1]);
-          if (DEBUG(BUG))
+          if (DEBUG(MISC))
             xd("PKT", buf, got);
           continue;
         }
