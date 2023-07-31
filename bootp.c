@@ -1,4 +1,11 @@
-/* Allow PXE boot on a certain interface
+/* Shell scripted bootstrapping service on an interface for zero config installs of VMs
+ *
+ * Implemented: 	BOOTP	https://datatracker.ietf.org/doc/html/rfc951
+ * Partly implemented:	DHCPv4	https://datatracker.ietf.org/doc/html/rfc2131	https://datatracker.ietf.org/doc/html/rfc2132
+ * Not implemented:	DHCPv6	https://datatracker.ietf.org/doc/html/rfc3315	(not needed for bootstrapping VMs)
+ *
+ * Implemented does not mean this fully conforms to or is fully compatible to the RFC.
+ * This only means there is nothing left in the RFC which needs to be implemented here.
  */
 
 #define _GNU_SOURCE
@@ -211,7 +218,7 @@ print_addr(struct sockaddr_in *sa, int len, const char *what, ...)
 }
 
 static void
-xd_(const char *what, void *ptr, int len, int w)
+xd_(const char *what, void *ptr, int len, int w, int pad)
 {
   int	i, pos, max, end;
 
@@ -226,7 +233,7 @@ xd_(const char *what, void *ptr, int len, int w)
       max	= len-pos;
       if (max>w) max = w;
 
-      printf("%s %04x", what, pos);
+      printf("%s %03x", what, pos);
       for (i=0; i<max; i++)
         if (pos+i >= end && i < w-2)
           {
@@ -244,7 +251,7 @@ xd_(const char *what, void *ptr, int len, int w)
           printf(" %02x", ((unsigned char *)ptr)[pos+i]);
       while (++i<=w)
         printf("   ");
-      printf("  ! ");
+      printf("%*s ! ", pad, "");
       for (i=0; i<max; i++)
         {
           unsigned char c = ((unsigned char *)ptr)[pos+i];
@@ -260,104 +267,12 @@ xd_(const char *what, void *ptr, int len, int w)
 static void
 xd(const char *what, void *ptr, int len)
 {
-  xd_(what, ptr, len, 32);
+  xd_(what, ptr, len, 32, 3);
 }
 
 #define	XD(what,elem)	xd(what,&(elem),sizeof (elem))
 
-const char *
-DHCPtype(const unsigned char *buf)
-{
-  switch (buf[2])
-    {
-      case 1:	return "DISCOVER";
-      case 2:	return "OFFER";
-      case 3:	return "REQUEST";
-      case 4:	return "DECLINE";
-      case 5:	return "ACK";
-      case 6:	return "NAK";
-      case 7:	return "RELEASE";
-      case 8:	return "INFORM";
-    }
-  return 0;
-}
-
-struct dhcps
-  {
-    const char	*name;
-    int		n;
-    const char *(*fn)(const unsigned char *s);
-  } dhcps[] =
-  { { "NOP"		, -1	}
-  , { "MASK"		, -5	}
-  , { "TZ"		, -5	}
-  , { "routers"		,  0	}
-  , { "times"		,  0	}
-  , { "names"		,  0	}
-  , { "DNS"		,  0	}
-  , { "logs"		,  0	}
-  , { "cookies"		,  0	}
-  , { "LPR"		,  0	}
-  , { "impress"		,  0	}
-  , { "RLP"		,  0	}
-  , { "Name"		,  0	}
-  , { "bootlen"		,  2	}
-  , { "dumpfile"	,  0	}
-  , { "domain"		,  0	}
-  , { "swap"		,  4	}
-  , { "root"		,  0	}
-  , { "extension"	,  0	}
-  , { "routing"		,  0	}
-  , { "srcrouting"	,  1	}
-  , { "srcfilter"	,  0	}
-  , { "maxudp"		,  2	}
-  , { "TTLudp"		,  1	}
-  , { "PMTU"		,  4	}
-  , { "PMTUtable"	,  0	}
-  , { "MTU"		,  2	}
-  , { "local"		,  1	}
-  , { "broadcast"	,  4	}
-  , { "maskget"		,  1	}
-  , { "maskout"		,  1	}
-  , { "routerget"	,  1	}
-  , { "routersol"	,  4	}
-  , { "routes"		,  0	}
-  , { "trailers"	,  1	}
-  , { "arptimeout"	,  4	}
-  , { "ethencaps"	,  1	}
-  , { "TTLtcp"		,  1	}
-  , { "keepalive"	,  4	}
-  , { "garbage"		,  1	}
-  , { "NISdomain"	,  0	}
-  , { "29",0 }
-  , { "2a",0 }
-  , { "2b",0 }
-  , { "2c",0 }
-  , { "2d",0 }
-  , { "2e",0 }
-  , { "2f",0 }
-  , { "30",0 }
-  , { "31",0 }
-  , { "32",0 }
-  , { "33",0 }
-  , { "34",0 }
-  , { "DHCPtype"	,  1	, DHCPtype	}
-  , { "DHCPserver"	,  4	}
-  , { "DHCPparam"	,  0	}
-  , { "message"		,  0	}
-  , { "maxsize"		,  2	}
-  , { "renew"		,  4	}
-  , { "rebind"		,  4	}
-  , { "vendorcls"	,  0	}
-  , { "clientId"	,  0	}
-  , { "TFTP"		,  0	}
-  , { "BootFile"	,  0	}
-  , { "NISplusdom"	,  0	}
-  , { "41",0 }
-  , { "42",0 }
-  , { "43",0 }
-  , { "44",0 }
-};
+#include "dhcp.h"
 
 void
 decode_dhcp(struct decoded *decode, int debugging)
@@ -390,12 +305,12 @@ decode_dhcp(struct decoded *decode, int debugging)
           break;
         }
       fn	= 0;
-      if (c < sizeof dhcps / sizeof *dhcps)
+      if (c < sizeof DHCPoptions / sizeof *DHCPoptions)
         {
-          struct dhcps *d = dhcps+c;
+          struct DHCPoptions *d = DHCPoptions+c;
 
           t	= d->name;
-          if (d->n < 0)
+          if (d->n < 0)		/* NOP	*/
             {
               n	= -d->n;
               p	= 1;
@@ -410,11 +325,11 @@ decode_dhcp(struct decoded *decode, int debugging)
       memcpy(&decode->bytes[c], buf+i+p, n-p > 4 ? 4 : n-p);
       if (debugging)
         {
-          snprintf(tmp, sizeof tmp, "DHCP %4x %10s %3d %3d", i, t, c, n);
+          snprintf(tmp, sizeof tmp, "DHCP %03x %12s %3d %3d+%d", i, t, c, n-p, p);
           if (fn && (t = fn(buf+i))!=0)
             printf("%s %s\n", tmp, t);
           else
-            xd_(tmp, buf+i, i+n>len ? len-i : n, 24);
+            xd_(tmp, buf+i, i+n>len ? len-i : n, 24, 0);
         }
       i	+= n;
     }
@@ -734,13 +649,13 @@ set_dhcp(unsigned char *buf, int off, const char *s)
 {
   int		max = MAX_PKG_LEN - offsetof(struct bootp, vend);
   unsigned long	nr;
+  int		i, l;
   char		t;
-  int		l, i;
 
   /* check for buf being already at end here?	*/
   for (;;)
     {
-      char	*end;
+      char		*end;
 
       nr	= strtoul(s, &end, 0);
       if (!end || end == s || nr>255)
@@ -776,23 +691,13 @@ set_dhcp(unsigned char *buf, int off, const char *s)
       if (!*s)
         return off;
     }
-  if (off>=max-2)
-    {
-      printf("overflow DHCP %lu at %d: %s\n", nr, off, s);
-      return -1;
-    }
-  l	= off-1;		/* buf[l] != 0	*/
-  if (nr == 1)
-    t	= 'i';
-  else if (nr == 2)
-    t	= '4';
-  else
-    {
-      buf[l = off++] = 0;	/* buf[l] = 0	*/
-      t	= *s;
-      while (*s && *s!=' ') s++;
-      while (*s == ' ') s++;
-    }
+  /* 0 and 255 are handled above
+   * We now need at least 2 bytes
+   */
+  t	= *s;
+  while (*s && *s!=' ') s++;
+  while (*s == ' ') s++;
+  l	= off++;
   i	= 0;
   do
     {
@@ -830,6 +735,7 @@ set_dhcp(unsigned char *buf, int off, const char *s)
         {
         unsigned long	v;
         char		*end;
+
         case '1':
         case '2':
         case '4':
@@ -864,12 +770,17 @@ set_dhcp(unsigned char *buf, int off, const char *s)
       off	+= k;
       while (*s == ' ') s++;
     } while (*s);
-  if (i>0 && i<256 && !buf[l])
-    buf[l]	= i;
-  else if (!buf[l] || i!=4)
+  FATAL(l != off - i - 1);
+  buf[l]	= i;
+  if (nr < sizeof DHCPoptions / sizeof *DHCPoptions)
     {
-      printf("wrong length for type %c for DHCP %lu at %d\n", t, nr, off);
-      return -1;
+      struct DHCPoptions *o = DHCPoptions+nr;
+
+      if (o->n>0 && i != o->n)
+        {
+          printf("wrong length for type %c for DHCP %lu at %d\n", t, nr, off);
+          return -1;
+        }
     }
   return off;
 }
@@ -1008,7 +919,7 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
 
   if (ret)
     free(ret);
-  ret	= strdup("");
+  ret	= strdup("");		/* used default reply port	*/
 
   /* we read lines of the form
    * KEY VALUE
@@ -1031,6 +942,15 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
       if (!cnt) continue;
 
       if (DEBUG(CHAT)) printf("CHAT: %s\n", line);
+      if (!strncmp("REPL ", line, 5))
+        {
+          /* REPL port IP
+           * REPL 0 IP
+           */
+          if (ret) free(ret);
+          ret	= strdup(line+5);
+          continue;
+        }
       if (!strncmp("SECS ", line, 5))
         {
           b->secs = from16(line+5);
@@ -1104,12 +1024,6 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
               continue;
             }
         }
-      if (!strncmp("REPL ", line, 5))
-        {
-          if (ret) free(ret);
-          ret	= strdup(line+5);
-          continue;
-        }
       printf("terminating script %s due to wrong line: %s\n", script, line);
       if (ret) free(ret);
       ret = 0;
@@ -1158,7 +1072,7 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
            * (We cannot check for early termination,
            * because it can take time to read the pipe.)
            */
-	  if (DEBUG(MISC))
+          if (DEBUG(MISC))
             printf("Script %s should not close stdout before terminating.\n", script);
           flag	= 0;
         }
@@ -1174,6 +1088,7 @@ main(int argc, char **argv)
   int		cleanup;
 
   FATAL(BOOTP_MINSIZE != sizeof(struct bootp));
+  FATAL(DHCP_LAST_KNOWN_OPTION+1 != sizeof DHCPoptions/sizeof *DHCPoptions);
 
   if (argc!=2)
     {
