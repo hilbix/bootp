@@ -17,7 +17,7 @@ FROM="$4"		# socket: IP
 MAC="$5"		# packet: MAC from packet
 TXN="$6"		# packet: transaction number from packet (unchangeable)
 SERV="$7"		# packet: server name (if set we are not authoritative)
-FILE="$8"		# packet: file name
+INFILE="$8"		# packet: file name
 IP_WANTED="$9"		# packet: wanted IP
 IP_ASSIGNED="${10}"	# packet: assigned IP (i.E. from proxied answers)
 IP_TFTP="${11}"		# packet: TFTP IP (next hop)
@@ -39,18 +39,24 @@ bye()
 for a in request/*.sh
 do
 	# '' for default
-	IP=		# MUST interface IPv4.  '-' or 0.0.0.0 to ignore this MAC
-	MASK=		# OPT: interface netmask, either /CIDR or 255.x.y.z
-	GW=		# OPT: default router
-	LEASE=		# OPT: time in seconds, default 1000000
-	TFTP=		# OPT: TFTP, default: GW
-	SECS=		# OPT: seconds since boot
+	IP=		# MUST [ip4] interface IPv4.  '-': script did it, 0.0.0.0 to ignore this MAC
+	MASK=		# OPT: [mask] interface netmask, either /CIDR or 255.x.y.z
+	GW=		# OPT: [ip4] default router
+	LEASE=		# OPT: [s] until RENEWING,  default 1000000
+	REBIND=		# OPT: [s] until REBINDING, default 1500000
+	TFTP=		# OPT: [ip4] TFTP, default: GW
+	FILE=		# OPT: [path] BOOTP-Path
+	SECS=		# OPT: [s] seconds since boot
 	FLAG=		# OPT: flags
+	REPL=		# OPT: "port IP" or "0 IP" (for default port) reply to address
 	. "$a"
 	[ -n "$IP" ] && break
 done
-[ -n "$IP" ] || bye no matching VM found 'for' "$MAC"
-[ .- != ".$IP" ] && [ 0.0.0.0 != "$IP" ] || bye ignoring "$MAC"
+case "$IP" in
+(-)		exit;;	# script did everything
+('')		bye no matching VM found 'for' "$MAC";;
+(0.0.0.0)	bye ignoring "$MAC";;
+esac
 
 run()
 {
@@ -75,11 +81,14 @@ run	GW_DEV	jq -r '.[0].dev' <<<"$GW_J_R"
 run	GW_J_A	ip -j a s "$GW_DEV"
 run	GW_CIDR	jq -r '.[].addr_info[] | select(.family=="inet").prefixlen' <<<"$GW_J_A"
 def	MASK	"/$GW_CIDR"
+def	GW	"$GW_IP"
 def	TFTP	"$GW"
 def	FILE	''
+def	REPL	''
 def	FLAG	0
 def	SECS	0
 def	LEASE	1000000
+def	REBIND	1500000
 case "$MASK" in
 (/*)	bits=$[ 0xffffffff << (32 - "${MASK#/}") ];
 	printf -v MASK '%d.%d.%d.%d' $[ (bits>>24)&0xff ] $[ (bits>>16)&0xff ] $[ (bits>>8)&0xff ] $[ (bits>>0)&0xff ];
@@ -90,7 +99,7 @@ out()
 {
   case "${@:$#}" in
   (''|-)	;;
-  (*)		printf %q "$1"; printf ' %q' "${@:2}"; printf '\n';;
+  (*)		printf %s "$1"; printf ' %s' "${@:2}"; printf '\n';;
   esac
 }
 
@@ -102,6 +111,7 @@ arp -d "$IP"
 arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 } >&2
 
+out REPL "$REPL"
 out ADDR "$IP"				# Set the IP of the VM
 out TFTP "$TFTP"			# Set our interface as TFTP server
 out HOST "$GW_IP"			# output BOOTP/DHCP server IP
@@ -115,8 +125,10 @@ case "$DHCP53_bytes" in
 (*)	out VEND 0; printf 'unsupported DHCP type %q\n' "$DHCP53_bytes" >&2; exit 0;;
 esac
 out DHCP 54 i "$GW"
-out DHCP 1 "$MASK"
-out DHCP 51 4 "$LEASE"
+out DHCP  1 i "$MASK"	# => malformed according to tshark?
+out DHCP  3 i "$GW"	# works
+out DHCP 58 4 "$LEASE"
+out DHCP 59 4 "$REBIND"
 out DHCP 255
 
 #sleep 5
