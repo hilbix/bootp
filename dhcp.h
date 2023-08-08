@@ -5,6 +5,9 @@
  * - https://datatracker.ietf.org/doc/html/rfc2132
  * - https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
  *
+ * This Works is placed under the terms of the Copyright Less License,
+ * see file COPYRIGHT.CLL.  USE AT OWN RISK, ABSOLUTELY NO WARRANTY.
+ *
  * This is terribly incomplete.
  * This may change drastically if I need it.
  *
@@ -12,6 +15,8 @@
  * which can be transpiled into something like this header.
  * And any other language like a parser generator ..
  */
+
+const char DHCP_MAGIC[] = { 0x63, 0x82, 0x53, 0x63 };                                                                                                                                   
 
 #define	DHCP_IP		4		/* a single IPv4, 4 octets	*/
 #define	DHCP_IPS	0		/* list of IPs, 4 octets each	*/
