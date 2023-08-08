@@ -6,6 +6,9 @@
  *
  * Implemented does not mean this fully conforms to or is fully compatible to the RFC.
  * This only means there is nothing left in the RFC which needs to be implemented here.
+ *
+ * This Works is placed under the terms of the Copyright Less License,
+ * see file COPYRIGHT.CLL.  USE AT OWN RISK, ABSOLUTELY NO WARRANTY.
  */
 
 #define _GNU_SOURCE
@@ -157,41 +160,7 @@ udp_bc(const char *interface, int port)
   return fd;
 }
 
-#define	BOOTREQUEST	1
-#define	BOOTREPLY	2
-
-#define	BOOTP_MINSIZE	4+4+2+2+4*4+16+64+128+64	/* 300	*/
-#define	MAX_PKG_LEN	2000
-
-const char DHCP_MAGIC[]	= { 0x63, 0x82, 0x53, 0x63 };
-
-struct bootp	/* see http://www.tcpipguide.com/free/t_BOOTPMessageFormat.htm	*/
-  {
-    unsigned char	op;		/* BOOTREQUEST or BOOTREPLY	*/
-    unsigned char	htype;		/* 1:Ethernet	*/
-    unsigned char	hlen;		/* 6:Ethernet	*/
-    unsigned char	hops;		/* 0:number of hops */
-    u_int32_t		xid;		/* 32 bit transaction ID */
-    u_int16_t		secs;		/* ignored: seconds since boot began */
-    u_int16_t		flags;		/* RFC1542 flags: Bit 0 = use broadcast reply */
-    u_int32_t		ciaddr;		/* NBO: wanted IP	*/
-    u_int32_t		yiaddr;		/* NBO: assigned IP	*/
-    u_int32_t		siaddr;		/* NBO: TFTP server	*/
-    u_int32_t		giaddr;		/* NBO: relay (0)	*/
-    unsigned char	chaddr[16];	/* MAC	*/
-    char		sname[64];	/* opt: wanted/replying server name */
-    char		file[128];	/* PXE filename	*/
-    unsigned char	vend[64];	/* ignored: vendor-specific area */
-  };
-
-struct decoded
-  {
-    unsigned char	*data;
-    int			size;
-    uint16_t		pos[256];
-    uint8_t		len[256];
-    uint8_t		bytes[256][4];
-  };
+#include "bootp.h"
 
 void
 print_addr(struct sockaddr_in *sa, int len, const char *what, ...)
@@ -273,6 +242,15 @@ xd(const char *what, void *ptr, int len)
 #define	XD(what,elem)	xd(what,&(elem),sizeof (elem))
 
 #include "dhcp.h"
+
+struct decoded
+  {
+    unsigned char	*data;
+    int			size;
+    uint16_t		pos[256];
+    uint8_t		len[256];
+    uint8_t		bytes[256][4];
+  };
 
 void
 decode_dhcp(struct decoded *decode, int debugging)
@@ -516,7 +494,7 @@ set_vend(struct bootp *b, const char *s)
   const	int	off = offsetof(struct bootp, vend);
   int		i, max;
 
-  max	= MAX_PKG_LEN-off;
+  max	= BOOTP_MAXPKG-off;
 
   for (i=0; *pos; i++)
     {
@@ -647,7 +625,7 @@ putSTR(unsigned char *buf, const char **s, int max, int hex)
 int
 set_dhcp(unsigned char *buf, int off, const char *s)
 {
-  int		max = MAX_PKG_LEN - offsetof(struct bootp, vend);
+  int		max = BOOTP_MAXPKG - offsetof(struct bootp, vend);
   unsigned long	nr;
   int		i, l;
   char		t;
@@ -1108,7 +1086,7 @@ main(int argc, char **argv)
   cleanup	= 0;
   for (;;)
     {
-      static char	buf[MAX_PKG_LEN];
+      static char	buf[BOOTP_MAXPKG];
       static struct decoded decode;
       int		got;
       union sa		sa;
