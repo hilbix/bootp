@@ -5,7 +5,6 @@
 #
 # This needs "jq", so: sudo apt install jq
 
-
 #printf 'ARG: %q\n' "$@" >&2
 #printf 'DHCP_TYPE=%q\n' "$DHCP53_bytes" >&2
 #set | grep ^DHCP >&2
@@ -46,10 +45,12 @@ do
 	REBIND=		# OPT: [s] until REBINDING, default 1500000
 	TFTP=		# OPT: [ip4] TFTP, default: GW
 	FILE=		# OPT: [path] BOOTP-Path
+	SEED=		# OPT: [word] http://$GW/d-i/$SEED/preseed.cfg
 	SECS=		# OPT: [s] seconds since boot
 	FLAG=		# OPT: flags
 	REPL=		# OPT: "port IP" or "0 IP" (for default port) reply to address
 	. "$a"
+	request "$@"
 	[ -n "$IP" ] && break
 done
 case "$IP" in
@@ -83,7 +84,8 @@ run	GW_CIDR	jq -r '.[].addr_info[] | select(.family=="inet").prefixlen' <<<"$GW_
 def	MASK	"/$GW_CIDR"
 def	GW	"$GW_IP"
 def	TFTP	"$GW"
-def	FILE	''
+def	SEED	''
+def	FILE	"${SEED:+http://$GW/d-i/$SEED/preseed.cfg}"
 def	REPL	''
 def	FLAG	0
 def	SECS	0
