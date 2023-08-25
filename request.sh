@@ -41,7 +41,9 @@ do
 	IP=		# MUST [ip4] interface IPv4.  '-': script did it, 0.0.0.0 to ignore this MAC
 	MASK=		# OPT: [mask] interface netmask, either /CIDR or 255.x.y.z
 	GW=		# OPT: [ip4] default router
-	LEASE=		# OPT: [s] until RENEWING,  default 1000000
+	BC=		# OPT: [ip4] Broadcast address, default taken from interface
+	RENEW=		# OPT: [s] until RENEWING,  default  900000
+	LEASE=		# OPT: [s] for LEASE time,  default 1000000
 	REBIND=		# OPT: [s] until REBINDING, default 1500000
 	TFTP=		# OPT: [ip4] TFTP, default: GW
 	FILE=		# OPT: [path] BOOTP-Path
@@ -89,6 +91,7 @@ def	FILE	"${SEED:+http://$GW/d-i/$SEED/preseed.cfg}"
 def	REPL	''
 def	FLAG	0
 def	SECS	0
+def	RENEW	 900000
 def	LEASE	1000000
 def	REBIND	1500000
 case "$MASK" in
@@ -96,6 +99,8 @@ case "$MASK" in
 	printf -v MASK '%d.%d.%d.%d' $[ (bits>>24)&0xff ] $[ (bits>>16)&0xff ] $[ (bits>>8)&0xff ] $[ (bits>>0)&0xff ];
 	;;
 esac
+IFS=. read a b c d u v w x <<<"$IP.$MASK" && printf -v BCDEF %d.%d.%d.%d $[ a|(u^255) ] $[ b|(v^255) ] $[ c|(w^255) ] $[ d|(x^255) ]
+def	BC	"$BCDEF"
 
 out()
 {
@@ -122,14 +127,16 @@ out SECS "$SECS"
 out FLAG "$FLAG"
 
 case "$DHCP53_bytes" in
-(01)	out DHCP 53 1 02;;	# DISCOVER => OFFER
-(03)	out DHCP 53 1 05;;	# REQUEST => ACK    -- we probably should be a bit more clever here
+(01)	out DHCP 53 1 2;;	# DISCOVER => OFFER
+(03)	out DHCP 53 1 5;;	# REQUEST => ACK    -- we probably should be a bit more clever here
 (*)	out VEND 0; printf 'unsupported DHCP type %q\n' "$DHCP53_bytes" >&2; exit 0;;
 esac
+out DHCP 28 i "$BC"
 out DHCP 54 i "$GW"
 out DHCP  1 i "$MASK"	# => malformed according to tshark?
 out DHCP  3 i "$GW"	# works
-out DHCP 58 4 "$LEASE"
+out DHCP 58 4 "$RENEW"
+out DHCP 51 4 "$LEASE"
 out DHCP 59 4 "$REBIND"
 out DHCP 255
 
