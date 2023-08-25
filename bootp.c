@@ -1153,7 +1153,7 @@ main(int argc, char **argv)
         case BOOTREPLY:
           print_addr(&sa.sa4, got, "BOOTREPLY %s", bxid((struct bootp *)buf));
           script="./reply.sh";
-          continue;
+          break;
         case BOOTREQUEST:
           print_addr(&sa.sa4, got, "BOOTREQUEST %s", bxid((struct bootp *)buf));
           script="./request.sh";
@@ -1173,6 +1173,8 @@ main(int argc, char **argv)
       if (!line)
         continue;	/* something failed	*/
 
+      /* ./reply.sh (BOOTREPLY) should not come here	*/
+      buf[0]	= BOOTREPLY;
       if (reply(script, buf, got, &sa.sa4, line))
         continue;
 
