@@ -159,17 +159,19 @@ The best place I found so far is to put everyting into the description of a snap
 The snapshots are read from `current` upwards to the root, until one which sets the `IPv4` is found.
 Other snapshots which are not on the straight path are ignored.
 
-Older values doe not overwrite newer ones, except for `DHCP`, which is combined.
+Older values do not overwrite newer ones, except for `DHCP`, which are combined.
 
 Lines are in the format `TAG VALUE`.  Lines with unknown TAGs are ignored.  
 
 Currently only these `TAG`s are recognized (see [request/proxmox.sh](request/proxmox.sh)):
 
 - `IPv4 a.b.c.d` sets the IP.  Search stops after this snapshot.
-- `FILE` sets the boot filename
-- `SEED` sets a special `FILE`: `http://$GW/d-i/$SEED/preseed.cfg`
+- `FILE name` sets the boot filename
+- `SEED codename` sets a special `FILE`: `http://$GW/d-i/$SEED/preseed.cfg`
   - `$GW` is automatically determined from the `IPv4` given
-- `DHCP` outputs a DHCP option (see `DHCP id type data` above)
+- `DHCP` outputs a DHCP option
+  - see `DHCP id type data` above
+  - see `struct DHCPoptions` in [dhcp.h](dhcp.h)
 
 This can be extended to your needs in [request/proxmox.sh](request/proxmox.sh).
 
@@ -192,7 +194,7 @@ Define a VM.
   - **Do not forget to verify it with `SHA512SUMS` authenticated via `SHA512SUMS.sign`**
   - For a script to do authenticated downloads from some existing Debian, see <https://github.com/hilbix/download-debian>
 - Do not start it
-- As long as it is of, define the first snapshot
+- As long as it is off, define the first snapshot
 - Name it `INSTALL`
 - Put in the description below
 - Be sure the `preseed` file is served correctly
@@ -292,6 +294,11 @@ TFTP?
 
 - I am working on it
 - Not sure if here or in separate repo
+
+IPv6?
+
+- This is BOOTP/DHCP.  Hence it is only for IPv4.
+- 
 
 License?
 
