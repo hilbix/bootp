@@ -210,6 +210,8 @@ Description of `INSTALL`
 ```
 IPv4 192.168.1.2
 SEED bookworm
+DHCP 12 s hostname
+DHCP 15 s example.com
 DHCP  6 i 1.1.1.1 8.8.8.8
 DHCP 29 1 0
 ```
@@ -218,7 +220,8 @@ File served via `http://192.168.1.1/d-i/bookworm/preseed.cfg`:
 ```
 # (Before doing tons of gigabyte installs just to query debconf-get-selections --installer)
 
-d-i     netcfg/get_hostname                     string          test
+d-i     netcfg/get_hostname                     string          hostname
+d-i     netcfg/hostname                         string          hostname
 d-i     netcfg/get_domain                       string          example.net
 
 d-i     mirror/http/proxy                       string          http://192.168.1.1:3142
