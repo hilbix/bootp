@@ -35,25 +35,60 @@ bye()
 
 [ -z "$SERV" ] || [ ".$SERV" = ".$NAME" ] || bye forwarding not yet implemented
 
+# Some helpers for request() below
+
+# Walk the snapshots via: SNAP=$($1); $2 "$SNAP"; SNAP=$($3 "$SNAP")
+# returns 0 if found and data was output (else nothing is output)
+walksnaps()
+{
+  local SNAP tag data
+
+  SNAP="$($1)"
+  while	[ -n "$SNAP" ] || return
+        while	read -ru6 tag data
+        do
+              #printf '%q %d %q\n' "$VM" "$tag" "$data" >&2
+              case "$tag" in
+              (SEED|FILE)	l="${tag,,}"; [ -n "${!l}" ] || eval "$l=\"\$data\"";;
+              (DHCP)		dhcp+=("$data");;
+              (IPv4)		ip="$data";;
+              esac
+        done 6< <($2 "$SNAP")
+
+        case "$ip" in
+        (*.*.*.*)	break;;
+        esac
+  do
+        SNAP="$($3 "$SNAP")"
+  done
+
+  IP="$ip"
+  FILE="$file"
+  SEED="$seed"
+  [ 0 = "${#dhcp[@]}" ] || printf 'DHCP %s\n' "${dhcp[@]}"
+}
+
 for a in request/*.sh
 do
-	# '' for default
-	IP=		# MUST [ip4] interface IPv4.  '-': script did it, 0.0.0.0 to ignore this MAC
-	MASK=		# OPT: [mask] interface netmask, either /CIDR or 255.x.y.z
-	GW=		# OPT: [ip4] default router
-	BC=		# OPT: [ip4] Broadcast address, default taken from interface
-	RENEW=		# OPT: [s] until RENEWING,  default  900000
-	LEASE=		# OPT: [s] for LEASE time,  default 1000000
-	REBIND=		# OPT: [s] until REBINDING, default 1500000
-	TFTP=		# OPT: [ip4] TFTP, default: GW
-	FILE=		# OPT: [path] BOOTP-Path
-	SEED=		# OPT: [word] http://$GW/d-i/$SEED/preseed.cfg
-	SECS=		# OPT: [s] seconds since boot
-	FLAG=		# OPT: flags
-	REPL=		# OPT: "port IP" or "0 IP" (for default port) reply to address
-	. "$a"
-	request "$@"
-	[ -n "$IP" ] && break
+        # '' for default
+        IP=		# MUST [ip4] interface IPv4.  '-': script did it, 0.0.0.0 to ignore this MAC
+        MASK=		# OPT: [mask] interface netmask, either /CIDR or 255.x.y.z
+        GW=		# OPT: [ip4] default router
+        BC=		# OPT: [ip4] Broadcast address, default taken from interface
+        RENEW=		# OPT: [s] until RENEWING,  default  900000
+        LEASE=		# OPT: [s] for LEASE time,  default 1000000
+        REBIND=		# OPT: [s] until REBINDING, default 1500000
+        TFTP=		# OPT: [ip4] TFTP, default: GW
+        FILE=		# OPT: [path] BOOTP-Path
+        SEED=		# OPT: [word] http://$GW/d-i/$SEED/preseed.cfg
+        SECS=		# OPT: [s] seconds since boot
+        FLAG=		# OPT: flags
+        REPL=		# OPT: "port IP" or "0 IP" (for default port) reply to address
+
+        . "$a" &&	# import request()
+        request "$@" &&	# run request()
+        [ -n "$IP" ] &&
+        break
 done
 case "$IP" in
 (-)		exit;;	# script did everything
@@ -96,8 +131,8 @@ def	LEASE	1000000
 def	REBIND	1500000
 case "$MASK" in
 (/*)	bits=$[ 0xffffffff << (32 - "${MASK#/}") ];
-	printf -v MASK '%d.%d.%d.%d' $[ (bits>>24)&0xff ] $[ (bits>>16)&0xff ] $[ (bits>>8)&0xff ] $[ (bits>>0)&0xff ];
-	;;
+        printf -v MASK '%d.%d.%d.%d' $[ (bits>>24)&0xff ] $[ (bits>>16)&0xff ] $[ (bits>>8)&0xff ] $[ (bits>>0)&0xff ];
+        ;;
 esac
 IFS=. read a b c d u v w x <<<"$IP.$MASK" && printf -v BCDEF %d.%d.%d.%d $[ a|(u^255) ] $[ b|(v^255) ] $[ c|(w^255) ] $[ d|(x^255) ]
 def	BC	"$BCDEF"
@@ -119,10 +154,10 @@ arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 } >&2
 
 out REPL "$REPL"
-out ADDR "$IP"				# Set the IP of the VM
-out TFTP "$TFTP"			# Set our interface as TFTP server
-out HOST "$GW_IP"			# output BOOTP/DHCP server IP
-out FILE "$FILE"			# output boot file
+out ADDR "$IP"			# Set the IP of the VM
+out TFTP "$TFTP"		# Set our interface as TFTP server
+out HOST "$GW_IP"		# output BOOTP/DHCP server IP
+out FILE "$FILE"		# output boot file
 out SECS "$SECS"
 out FLAG "$FLAG"
 
@@ -133,8 +168,8 @@ case "$DHCP53_bytes" in
 esac
 out DHCP 28 i "$BC"
 out DHCP 54 i "$GW"
-out DHCP  1 i "$MASK"	# => malformed according to tshark?
-out DHCP  3 i "$GW"	# works
+out DHCP  1 i "$MASK"		# => malformed according to tshark?
+out DHCP  3 i "$GW"		# works
 out DHCP 58 4 "$RENEW"
 out DHCP 51 4 "$LEASE"
 out DHCP 59 4 "$REBIND"
