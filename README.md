@@ -141,6 +141,46 @@ shows following (manually configured) entry at my side (`X` is redacted data):
 	-A PVEFW-HOST-IN -s 0.0.0.0/32 -d 255.255.255.255/32 -i vmbr0 -p udp -m udp --sport 68 --dport 67 -j RETURN
 
 
+## `preseed.sh`
+
+Serving Debian Preseed files usually is troublesome:
+
+- You need to create them properly
+- You need to serve them properly
+
+With the help of `preseed.sh` this should become easy:
+
+- `./preseed.sh` listens on `127.0.0.1:8901` by default
+  - It (somehow) understands the PROXY protocol version 1 of HaProxy
+- `./preseed.sh 9999,bind=1.2.3.4` would listen on `1.2.3.4:9999`
+  - The syntax stems from `socat tcp-listen:PORT,bind=HOST`
+
+`/etc/haproxy/haproxy.conf`:
+```
+listen  http
+        bind    192.168.0.1:80	# put your internal interface here
+        mode    http
+        server  preseed 127.0.0.1:8901 send-proxy
+```
+
+> If you are not familiar with HaProxy, get in touch with it.  It is extremely useful.
+
+`preseed.sh` will convert `/d-i/SEEDNAME/preseed.cfg` into `preseed/SEEDNAME.preseed`
+and will fall back to `SEEDNAME.preseed`.  So if you use `SEED generic` in the VM settings
+(snapshot comment), it will serve the default `generic.preseed`.
+
+This uses following variables to populate the preseed:
+
+- `HOSTNAME` and `DOMAINNAME` - which are also used for DHCP
+- `USERNAME` and `PASSWORD` for the user
+- `APTPROXY` for the apt proxy URL
+
+You can easily extend this using files in `preseed/` directory.
+Just use a softlink to put this directory elsewhere.
+
+Note that `preseed.sh` is able to run on port 80, too.  However for this it must run as `root`.
+
+
 ## Default `request.sh`
 
 The default `request.sh` includes all scripts in the `request/` directory
@@ -176,15 +216,47 @@ Currently only these `TAG`s are recognized (see [request/proxmox.sh](request/pro
 This can be extended to your needs in [request/proxmox.sh](request/proxmox.sh).
 
 
-#### Example
+### `request/virsh.sh`
+
+> This needs Python3 to read XML and convert it to JSON.
+> See `xml2json/` submodule
+
+Works nearly the same as ProxMox:
+
+- Create a VM with snapshot support
+- Create a snapshot
+- Put parameters into the comment
+
+This has been generalized now, such that you can use `preseed.sh` with it:
+
+```
+IPv4 192.168.1.3
+SEED generic
+HOSTNAME myhostname
+DOMAINNAME example.com
+DNS4 1.1.1.1 8.8.8.8
+USERNAME user
+PASSWORD pw
+APTPROXY http://192.168.1.1:3142
+```
+
+With these parameters, `preseed.sh` can then automatically fill `generic.preseed`, too.
+
+Also a script named `ip/192.168.1.3.sh` can be used for additional variable manipulation.
+
+Use a softlink as `ip/` to pull in things from another (parental) `git` repo etc.
+
+> `request/proxmox.sh` is not yet updated to this standard, but will follow soon I hope.
+
+
+### Example
 
 > This example assumes
-> - your ProxMox internal interface (`vmbr0`) has IP `192.168.1.1`
+> - your `virsh` internal interface (`vmbr0`) has IP `192.168.1.1`
 > - On `192.168.1.1:3142` some `apt-cacher-ng` runs
->   - If you do not want this, leave `mirror/http/proxy` out of `preseed.cfg`
+>   - If you do not want this, leave `APTPROXY` away
 >   - however then the interface must allow NAT to allow the VM to access Internet directly
-> - On `192.168.1.1:80` some web service runs which is able to server the `preseed.cfg` file
->   - Hence `curl http://192.168.1.1/d-i/bookworm/preseed.cfg` on ProxMox outputs the file
+> - On `192.168.1.1:80` HaProxy listens and forwards requests to `127.0.0.1:8901` (see above)
 > - On the interface no other service like `DHCP` runs
 
 Define a VM.
@@ -197,75 +269,30 @@ Define a VM.
 - As long as it is off, define the first snapshot
 - Name it `INSTALL`
 - Put in the description below
-- Be sure the `preseed` file is served correctly
-- Run `./bootp vmbr0` (and keep it running!)
+  ```
+  IPv4 192.168.1.2
+  SEED generic
+  DNS4 1.1.1.1 8.8.8.8
+  HOSTNAME test
+  DOMAINNAME example.com
+  USERNAME myuser
+  PASSWORD somesecret
+  APTPROXY http://192.168.1.1:3142
+  ```
+- Run `./preseed.sh`
+  - Without HaProxy run `./preseed.sh 3142,bind=192.168.1.1` as root (and keep it running!)
+- Run `./bootp vmbr0` as root (and keep it running!)
   - as seen in [`autostart/bootp.sh`](autostart/bootp.sh)
   - this is my way to autostart things via [some crude cron script](https://github.com/hilbix/ptybuffer/blob/master/script/autostart.sh)
-  - If this fails you probably already have running some DHCP service on the interface.
+  - If this exec fails, you probably already have running some DHCP service on the interface.
   - Hence you need to run this on some interface which has no DHCP or other things.
 - Open console
 - Start the VM
 - In the console press `a` (Return) `a` (Return)
 - The install should run through completely
 
-Description of `INSTALL`
-```
-IPv4 192.168.1.2
-SEED bookworm
-DHCP 12 s hostname
-DHCP 15 s example.com
-DHCP  6 i 1.1.1.1 8.8.8.8
-DHCP 29 1 0
-```
-
-File served via `http://192.168.1.1/d-i/bookworm/preseed.cfg`:
-```
-# (Before doing tons of gigabyte installs just to query debconf-get-selections --installer)
-
-d-i     netcfg/get_hostname                     string          hostname
-d-i     netcfg/hostname                         string          hostname
-d-i     netcfg/get_domain                       string          example.net
-
-d-i     mirror/http/proxy                       string          http://192.168.1.1:3142
-
-d-i     localechooser/supported-locales         multiselect     en_US.UTF-8, de_DE.UTF-8
-d-i     debian-installer/locale                 select          en_US.UTF-8
-d-i     keyboard-configuration/xkb-keymap       select          de,us
-d-i     passwd/user-fullname                    string          test
-d-i     passwd/username                         string          test
-d-i     passwd/user-password                    password        test
-d-i     passwd/user-password-again              password        test
-
-d-i     netcfg/choose_interface                 select          auto
-
-d-i     passwd/root-login                       boolean         false
-
-d-i     partman-auto/method                     string          lvm
-d-i     partman-auto-lvm/guided_size            string          16G
-d-i     partman-lvm/confirm_nooverwrite         boolean         true
-
-d-i     partman/choose_partition                select          finish
-d-i     partman/confirm                         boolean         true
-d-i     partman/confirm_nooverwrite             boolean         true
-
-# stolen from https://gist.github.com/sturadnidge/5841112
-tasksel tasksel/first                           multiselect     standard,ssh-server
-
-d-i     mirror/country                          string          manual
-d-i     mirror/http/hostname                    string          deb.debian.org
-d-i     mirror/http/directory                   string          /debian
-
-d-i     grub-installer/only_debian              boolean         true
-d-i     grub-installer/bootdev                  string          default
-
-d-i     finish-install/reboot_in_progress       note    
-d-i     debian-installer/exit/poweroff          boolean true
-```
-
 Notes:
 
-- Currently I run a customized web script which is able to hand out a VM specific `preseed.cfg`
-  based on the IP of the `VM`.
 - You can use `FILE` instead of `SEED` to give the URL you like (untested)
 - I haven't done it yet, but it is possible to create a script to fully automate the install
   - Define a VM
