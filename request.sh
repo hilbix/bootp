@@ -167,12 +167,19 @@ request()
   def	BC	"$BCDEF"
 
   # Perhaps augment a bit
-  [ -s "ip/$IP.sh" ] && . "ip/$IP.sh"
+  for a in "$IP" "${IP%.*}.x" "${IP%.*.*}.x.x" "${IP%%.*}.x.x.x"
+  do
+        [ -s "ip/$a.sh" ] || continue
+        pushd "$ip" >/dev/null &&
+        . "./$a.sh"
+        popd >/dev/null
+        break
+  done
 
   # Do some caching (for preseed.sh etc.)
   for c in IP ${!_*}
   do
-  	[ _ = "$c" ] || printf "%q=%q\n" "$c" "${!c}"
+        [ _ = "$c" ] || printf "%q=%q\n" "$c" "${!c}"
   done > "cache/$IP.tmp" &&			# output cache/$IP.cache
   mv -f "cache/$IP.tmp" "cache/$IP.ip" &&	# this hopefully is an atomic rename()
   ln -fs "$IP.ip" "cache/$MAC.mac"
