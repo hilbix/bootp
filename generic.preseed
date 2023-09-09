@@ -1,0 +1,44 @@
+# pull in some defaults
+
+d-i	netcfg/hostname				string		$HOSTNAME
+d-i	netcfg/get_hostname			string		$HOSTNAME
+d-i	netcfg/get_domain			string		$DOMAINNAME
+
+d-i	passwd/user-fullname			string		$USERNAME
+d-i	passwd/username				string		$USERNAME
+d-i	passwd/user-password 			password	$PASSWORD
+d-i	passwd/user-password-again		password	$PASSWORD
+
+d-i	mirror/http/proxy			string		$APTPROXY
+
+# (Before doing tons of gigabyte installs just to query debconf-get-selections --installer)
+
+d-i	localechooser/supported-locales		multiselect	en_US.UTF-8, de_DE.UTF-8
+d-i	debian-installer/locale			select		en_US
+d-i	keyboard-configuration/xkb-keymap	select		de,us
+
+d-i	netcfg/choose_interface			select		auto
+
+d-i	passwd/root-login			boolean		false
+
+d-i	partman-auto/method			string		lvm
+d-i	partman-auto-lvm/guided_size		string		16G
+d-i	partman-lvm/confirm_nooverwrite		boolean		true
+
+d-i	partman/choose_partition		select		finish
+d-i	partman/confirm				boolean		true
+d-i	partman/confirm_nooverwrite		boolean		true
+
+# stolen from https://gist.github.com/sturadnidge/5841112
+tasksel	tasksel/first				multiselect	standard,ssh-server
+
+d-i	mirror/country				string		manual
+d-i	mirror/http/hostname			string		deb.debian.org
+d-i	mirror/http/directory			string		/debian
+
+d-i	grub-installer/only_debian		boolean		true
+d-i	grub-installer/bootdev			string		default
+
+d-i	finish-install/reboot_in_progress	note	
+d-i	debian-installer/exit/poweroff		boolean	true
+
