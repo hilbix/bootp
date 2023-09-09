@@ -1,3 +1,6 @@
 .*.swp
 /.tmp/
 /bootp
+/cache
+/ip
+/preseed
