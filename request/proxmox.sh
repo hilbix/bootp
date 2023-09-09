@@ -92,7 +92,7 @@ request()
   [ 0 = "${#dhcp[@]}" ] || printf 'DHCP %s\n' "${dhcp[@]}"
 
   IP="$ip"
-  FILE="$file"
-  SEED="$seed"
+  _FILE="$file"
+  _SEED="$seed"
 }
 
