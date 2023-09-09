@@ -9,7 +9,7 @@
 # Expects HTTP request on STDIN for http://$GW/d-i/codename/preseed.cfg
 # Output HTTP answer for it on STDOUT
 
-[ -n "$SOCAT_VERSION" ] || exec socat -dd tcp-listen:"${1:-8901}",reuseaddr,fork exec:"$0" || exit
+[ -n "$SOCAT_VERSION" ] || exec socat -dd tcp-listen:"${1:-8901,bind=127.0.0.1}",reuseaddr,fork exec:"$0" || exit
 
 LC_ALL=C	# we need to count bytes, not UTF-8 characters
 
