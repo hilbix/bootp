@@ -56,8 +56,8 @@ walksnaps()
               case "$tag" in
               (DHCP)		dhcp+=("$data");;
               (IPv4)		IP="$data";;
+              ([^A-Z_]*)	;;
               (*[^A-Z0-9_]*)	;;
-              (_[A-Z]*)		printf -vmore '_%q=%q %s' "$tag" "$data" "$more";;		# custom _VARs
               (*)		tag="_$tag"; [ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
               esac
         done 6< <($2 "$SNAP")
@@ -69,7 +69,6 @@ walksnaps()
         SNAP="$($3 "$SNAP")"
   done
 
-  [ -z "$more" ] || eval "$more"
   [ 0 = "${#dhcp[@]}" ] || printf 'DHCP %s\n' "${dhcp[@]}"
 }
 
@@ -180,7 +179,7 @@ request()
 }
 
 # If it is cached, reuse it a single time
-[ "cache/$MAC.mac" ] && . "cache/$MAC.mac" && rm -f "cache/$MAC.mac" || request
+[ -s "cache/$MAC.mac" ] && . "cache/$MAC.mac" && rm -f "cache/$MAC.mac" || request
 
 arp >&2
 
