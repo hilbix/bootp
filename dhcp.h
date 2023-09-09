@@ -16,10 +16,11 @@
  * And any other language like a parser generator ..
  */
 
-const char DHCP_MAGIC[] = { 0x63, 0x82, 0x53, 0x63 };                                                                                                                                   
+const char DHCP_MAGIC[] = { 0x63, 0x82, 0x53, 0x63 };
 
 #define	DHCP_IP		4		/* a single IPv4, 4 octets	*/
 #define	DHCP_IPS	0		/* list of IPs, 4 octets each	*/
+#define	DHCP_IP2	0		/* list of two IPs, 8 octets each	*/
 #define	DHCP_DOM	0		/* ASCII domain string	*/
 #define	DHCP_PATH	0		/* Unix file path	*/
 #define	DHCP_ASCII	0		/* ASCII string	*/
@@ -82,45 +83,45 @@ struct DHCPoptions
     const char *(*fn)(const unsigned char *s);
   } DHCPoptions[] =
   { { "NOP"		, -1	}		/*  0: */
-  , { "MASK"		, DHCP_IP	}	/*  1: */
+  , { "MASK"		, DHCP_IP	}	/*  1: Client interface netmask (for ->yiaddr)	*/
   , { "TZ"		, DHCP_32	}	/*  2: */
-  , { "routers"		, DHCP_IPS	}	/*  3: */
-  , { "times"		, 0	} 		/*  4: */
-  , { "names"		, 0	} 		/*  5: */
-  , { "DNS"		, 0	} 		/*  6: */
-  , { "logs"		, 0	} 		/*  7: */
-  , { "cookies"		, 0	} 		/*  8: */
-  , { "LPR"		, 0	} 		/*  9: */
-  , { "impress"		, 0	} 		/* 10: */
-  , { "RLP"		, 0	} 		/* 11: */
-  , { "Name"		, 0	} 		/* 12: */
-  , { "bootlen"		, 2	} 		/* 13: */
-  , { "dumpfile"	, 0	} 		/* 14: */
-  , { "domain"		, 0	} 		/* 15: */
-  , { "swap"		, 4	} 		/* 16: */
-  , { "root"		, 0	} 		/* 17: */
-  , { "extension"	, 0	} 		/* 18: */
-  , { "routing"		, 0	} 		/* 19: */
-  , { "srcrouting"	, 1	} 		/* 20: */
-  , { "srcfilter"	, 0	} 		/* 21: */
-  , { "maxudp"		, 2	} 		/* 22: */
-  , { "TTLudp"		, 1	} 		/* 23: */
-  , { "PMTU"		, 4	} 		/* 24: */
-  , { "PMTUtable"	, 0	} 		/* 25: */
-  , { "MTU"		, 2	} 		/* 26: */
-  , { "local"		, 1	} 		/* 27: */
-  , { "broadcast"	, 4	} 		/* 28: */
-  , { "maskget"		, 1	} 		/* 29: */
-  , { "maskout"		, 1	} 		/* 30: */
-  , { "routerget"	, 1	} 		/* 31: */
-  , { "routersol"	, 4	} 		/* 32: */
-  , { "routes"		, 0	} 		/* 33: */
-  , { "trailers"	, 1	} 		/* 34: */
-  , { "arptimeout"	, 4	} 		/* 35: */
-  , { "ethencaps"	, 1	} 		/* 36: */
-  , { "TTLtcp"		, 1	} 		/* 37: */
-  , { "keepalive"	, 4	} 		/* 38: */
-  , { "TCPgarbage"	, DHCP_8	} 	/* 39: TCP Keepalive Garbage (0=no 1=send garbage octet)	*/
+  , { "routers"		, DHCP_IPS	}	/*  3: list of IPv4 routers in the network (usually default gateway)	*/
+  , { "times"		, 0	}		/*  4: */
+  , { "names"		, 0	}		/*  5: */
+  , { "DNS"		, DHCP_IPS	}	/*  6: List of IPv4 DNS servers	*/
+  , { "logs"		, 0	}		/*  7: */
+  , { "cookies"		, 0	}		/*  8: */
+  , { "LPR"		, 0	}		/*  9: */
+  , { "impress"		, 0	}		/* 10: */
+  , { "RLP"		, 0	}		/* 11: */
+  , { "Name"		, DHCP_ASCII	}	/* 12: HOSTNAME	*/
+  , { "bootlen"		, 2	}		/* 13: */
+  , { "dumpfile"	, 0	}		/* 14: */
+  , { "domain"		, DHCP_ASCII	}	/* 15: DOMAINNAME	*/
+  , { "swap"		, 4	}		/* 16: */
+  , { "root"		, 0	}		/* 17: */
+  , { "extension"	, 0	}		/* 18: */
+  , { "routing"		, 0	}		/* 19: */
+  , { "srcrouting"	, 1	}		/* 20: */
+  , { "srcfilter"	, 0	}		/* 21: */
+  , { "maxudp"		, 2	}		/* 22: */
+  , { "TTLudp"		, 1	}		/* 23: */
+  , { "PMTU"		, 4	}		/* 24: */
+  , { "PMTUtable"	, 0	}		/* 25: */
+  , { "MTU"		, 2	}		/* 26: */
+  , { "local"		, 1	}		/* 27: */
+  , { "broadcast"	, DHCP_IP	}	/* 28: Client interface broadcast address (for ->yiaddr)	*/
+  , { "maskget"		, DHCP_8	}	/* 29: perform subnet mask discovery via ICMP: default 0=no 1=yes	*/
+  , { "maskout"		, DHCP_8	}	/* 30: provide subnet mask discovery via ICMP: default 0=no 1=yes	*/
+  , { "routerget"	, DHCP_8	}	/* 31: perform RFC1256 router discovery: default 0=no 1=yes	*/
+  , { "routersol"	, DHCP_IP	}	/* 32: router discovery address	*/
+  , { "routes"		, DHCP_IP2	}	/* 33: static routes, IP/32+Router, IP=0.0.0.0 not allowed	*/
+  , { "trailers"	, 1	}		/* 34: */
+  , { "arptimeout"	, 4	}		/* 35: */
+  , { "ethencaps"	, 1	}		/* 36: */
+  , { "TTLtcp"		, 1	}		/* 37: */
+  , { "keepalive"	, 4	}		/* 38: */
+  , { "TCPgarbage"	, DHCP_8	}	/* 39: TCP Keepalive Garbage (0=no 1=send garbage octet)	*/
   , { "NISdom"		, DHCP_ASCII	}	/* 40: */
   , { "NISips"		, DHCP_IPS	}	/* 41: */
   , { "NTP"		, DHCP_IPS	}	/* 42: NTP servers	*/
@@ -161,7 +162,7 @@ struct DHCPoptions
 
 #define	DHCP_LAST_KNOWN_OPTION	76
 
-  /* 77-223 see https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtm 
+  /* 77-223 see https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtm
    *
    * 100 PCode: see https://datatracker.ietf.org/doc/html/rfc4833
    * 101 TCode: see https://datatracker.ietf.org/doc/html/rfc4833
