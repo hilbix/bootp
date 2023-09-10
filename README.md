@@ -6,6 +6,8 @@
 >
 > I use it in on my production.
 
+[![bootp Build Status](https://api.cirrus-ci.com/github/hilbix/bootp.svg?branch=master)](https://cirrus-ci.com/github/hilbix/bootp/master)
+
 
 # Shell based ~~PXE~~ boot service
 
