@@ -241,12 +241,12 @@ Older values do not overwrite newer ones.
 
 Following `_TAG`s are recognized (see [request/proxmox.sh](request/proxmox.sh)):
 
-- `_IPv4 a.b.c.d` sets the IP.  Search stops after this snapshot.
+- `_IPv4=a.b.c.d` sets the IP.  Search stops after this snapshot.
 - `_HOSTNAME=myhostname` for setting DHCP hostname
 - `_DOMAINNAME=example.com` for setting DHCP domainname
 - `_DNS4=1.1.1.1 8.8.8.8` or similar for setting DHCP DNS servers
-- `_FILE name` sets the boot filename
-- `_SEED codename` sets a special `_FILE`: `http://$_GW/d-i/$SEED/preseed.cfg`
+- `_FILE=name` sets the boot filename
+- `_SEED=codename` sets a special `_FILE`: `http://$_GW/d-i/$SEED/preseed.cfg`
   - `$_GW` is automatically determined from the `IPv4` given
 - `_DHCP` outputs a DHCP option
   - see `DHCP id type data` above
