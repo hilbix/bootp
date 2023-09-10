@@ -200,7 +200,7 @@ listen  http
 > If you are not familiar with HaProxy, get in touch with it.  It is extremely useful.
 
 `preseed.sh` will convert `/d-i/SEEDNAME/preseed.cfg` into `preseed/SEEDNAME.preseed`
-and will fall back to `SEEDNAME.preseed`.  So if you use `SEED generic` in the VM settings
+and will fall back to `SEEDNAME.preseed`.  So if you use `_SEED generic` in the VM settings
 (snapshot comment), it will serve the default `generic.preseed`.
 
 This uses following variables to populate the preseed:
