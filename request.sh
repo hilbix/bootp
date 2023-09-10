@@ -56,9 +56,10 @@ walksnaps()
               #printf '%q %d %q\n' "$VM" "$tag" "$data" >&2
               : "$tag" "$data"
               case "$tag" in
-              (DHCP)		dhcp+=("$data");;
-              (IPv4)		IP="$data";;
-              ([^A-Z_]*)	;;
+              (_DHCP)		dhcp+=("$data");;
+              (_IPv4)		IP="$data";;
+              ([^_]*)		;;
+              (_[A-Z]*)		;;
               (*[^A-Z0-9_]*)	;;
               (*)		tag="_$tag"; [ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
               esac
@@ -175,7 +176,7 @@ request()
   def	BC	"$BCDEF"
 
   # Perhaps augment a bit
-  for a in "$IP" "${IP%.*}.x" "${IP%.*.*}.x.x" "${IP%%.*}.x.x.x"
+  for a in "$IP" "${IP%.*}._" "${IP%.*.*}._._" "${IP%%.*}._._._"
   do
         [ -s "ip/$a.sh" ] || continue
         pushd ip >/dev/null &&
