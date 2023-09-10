@@ -205,9 +205,9 @@ and will fall back to `SEEDNAME.preseed`.  So if you use `_SEED generic` in the 
 
 This uses following variables to populate the preseed:
 
-- `HOSTNAME` and `DOMAINNAME` - which are also used for DHCP
-- `USERNAME` and `PASSWORD` for the user
-- `APTPROXY` for the apt proxy URL
+- `_HOSTNAME` and `_DOMAINNAME` - which are also used for DHCP
+- `_USERNAME` and `_PASSWORD` for the user
+- `_APTPROXY` for the apt proxy URL
 
 You can easily extend this using files in `preseed/` directory.
 Just use a softlink to put this directory elsewhere.
