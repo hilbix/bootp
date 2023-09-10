@@ -61,7 +61,7 @@ walksnaps()
               ([^_]*)		;;			# _TAG must start with _
               (_[^A-Z]*)	;;			# _TAG must start with _X where X is uppercase letter
               (*[^A-Z0-9_]*)	;;			# _TAG must be made of uppercase/numbers/underscore
-              (*)		[ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
+              (?*)		[ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
               esac
         done 6< <($2 "$nr" "$SNAP" && echo)
 
@@ -211,6 +211,7 @@ arp >&2
 case "$DHCP53_bytes" in
 (01)	out DHCP 53 1 2;;	# DISCOVER => OFFER
 (03)	out DHCP 53 1 5;;	# REQUEST => ACK    -- we probably should be a bit more clever here
+(07)	bye ignoring DHCP NOTIFY type "$DHCP53_bytes";;
 (*)	bye unsupported DHCP type "$DHCP53_bytes";;
 esac
 
