@@ -1,0 +1,6 @@
+container:
+  image: gcc:latest
+
+task:
+  compile-script: make
+
