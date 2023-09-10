@@ -1,11 +1,13 @@
-> With this I am already able to automatically install ProxMox VMs.  
-> Besides that it is terribly incomplete and everything might change in future.
+> Semi-Automated install of ProxMox and `virsh` VMs works.
+> Besides that it still may be a bit incomplete.
+> 
+> It has matured a bit, so I do no more expect drastic changes.
+> But this is no promise.
 >
-> Now that there is [xml2json](https://github.com/hilbix/xml2json), so `jq` can be used to parse XML,
-> probably `virtsh` support could be added, too.
+> I use it in on my production.
 
 
-# Shell based PXE boot service
+# Shell based ~~PXE~~ boot service
 
 I really do not get it.  I tried ISC dhcpd and failed.  I tried dnsmasq and failed.  I tried bootpd and failed.
 Because all software around the boot process is overly complex, unflexible and does not fit my needs!
@@ -15,15 +17,16 @@ But nothing really usable (read: scriptable) there, yet.
 
 So I had to create my own.
 
-> Currently I have not tested it with PXE/TFTP.
+> Currently I do not use it with PXE/TFTP.
 >
-> However on ProxMox an automated install of a Debian VM works as described below.  
-> All you need to do is to prime the console with `a` (Return) `a` (Return).
-> The rest then is fully automatic.
+> To install a Debian VM from CDROM installer, all you need to do is to prime
+> the console with `a` (Return) `a` (Return).  The rest then is fully automatic.
 >
 > The important part is, that it does not only work for a single VM,
-> it works for all similar VMs, provided that each is handed out the correct
-> individual preseed file.  (Sadly Debian requires individual preseed files.)
+> but all(!) parameters can be given from the ProxMox UI (or `virt-manager`)
+> if you like (just by editing a snapshot's comment).
+>
+> Also `generic.preseed` works for me (for Debian, Ubuntu not yet tested).
 
 
 ## Usage
@@ -38,6 +41,11 @@ So I had to create my own.
 	./bootp interface
 
 Now try to boot something on the interface.
+
+### `./request.sh`
+
+> Skip to section "Default `request.sh`" if you are not interested about internals.
+
 You will see that a script named `./request.sh` is forked with 12 parameters:
 
 	NAME="$1"               # hostname (uname -n)
@@ -53,6 +61,14 @@ You will see that a script named `./request.sh` is forked with 12 parameters:
 	IP_TFTP="${11}"         # packet: TFTP IP (next hop)
 	IP_GW="${12}"           # packet: Gateway IP (forwarder)
 
+The DHCP packet is passed to the script in STDIN.  The offset are into this packet.
+The DHCP options in the request are passed via environment.  This is a bit hacky:
+
+- `DHCP${OPT}_len=N` length (in bytes) of the DHCP option
+- `DHCP${OPT}_pos=N` position (byte offset) of the DHCP option in the DHCP data
+- `DHCP${OPT}_bytes=XX XX XX XX` up to 4 bytes of the DHCP option in network byte order
+- DHCP option `${OPT}` ranges from `00` to `ff`, but only for existing options
+
 The script can send lines to STDOUT to alter the reply:
 
 	VEND 0
@@ -65,24 +81,31 @@ The script can send lines to STDOUT to alter the reply:
 	REPL port
 	REPL port ip.to.reply.to
 	DHCP id type data
+ 	SECS seconds
+        FLAG flags
+	WANT cia.d.d.r
 
 If some command (except `DHCP`) is given multiply, the last setting survives.
 
 - `VEND` is the vendor extension.
   - As this is not really supported, just use `VEND 0` for now
-  - Without `VEND 0` the vendor part will be copied from the request (which makes the answer fail)
+  - Without `VEND 0` and without `DHCP` the vendor part will be copied from the request (which makes the answer fail)
   - The script currently has no access to the vendor (in future it might be piped in from STDIN)
-- `ADDR ip` sets the IP address to send to the client
+  - `DHCP` uses the `VEND` extension, too, so both are mutually exclusive
+- `ADDR ip` sets the IP address (BOOTP `yiaddr`) to send to the client
   - This corresponds to `$IP_ASSIGNED` (or `${10}`)
   - Use `ADDR 0.0.0.0` to ignore the request
-- `HOST name` sets the reported server hostname
+- `HOST name` sets the reported server hostname (BOOTP `sname`)
   - Corresponds to `$NAME` (or `$1`)
-- `TFTP ip` sets the "next hop"
+- `TFTP ip` sets the "next hop" (BOOTP `siaddr`)
   - Corresponds to `$IP_TFTP` (or `${11}`)
-- `FILE name` sets the TFTP filename
+- `FILE name` sets the TFTP filename (BOOTP `file`)
   - Corresponds to `$FILE` (or `$8`)
-- `GATE ip` sets the gateway IP
+- `GATE ip` sets the gateway IP (BOOTP `giaddr`)
   - Corresponds to `$IP_GW` (or `${12}`)
+- `WANT ip` sets the "wanted" IP (BOOTP `ciaddr`)
+- `SECS seconds` sets the seconds from boot field (BOOTP `secs`)
+- `FLAG flags` sets the flag field (BOOTP `flags`)
 - `REPL port` sets the reply port
   - Default: 68
   - set to default if 0
@@ -98,7 +121,7 @@ If some command (except `DHCP`) is given multiply, the last setting survives.
   - `i`: IPv4 `a.b.c.d` (or a space separated list of such IPv4)
   - `m`: IPv4/MASK `a.b.c.d/w.x.y.z` (space separated list supported.  `/CIDR` not yet supported, sorry)
   - `s`: some string
-  - `x`: some string in hex writing (with or without spaces between the bytes)
+  - `x`: some string in hex writing (with or without spaces between the bytes) (untested)
 
 Note about answers:
 
@@ -140,8 +163,14 @@ shows following (manually configured) entry at my side (`X` is redacted data):
 	-A PVEFW-HOST-IN -s 192.168.X.Y/32 -d 192.168.X.0/24 -i vmbr0 -p udp -m udp --sport 67 --dport 68 -j RETURN
 	-A PVEFW-HOST-IN -s 0.0.0.0/32 -d 255.255.255.255/32 -i vmbr0 -p udp -m udp --sport 68 --dport 67 -j RETURN
 
+You also have the full power of the Shell using `set -x` in scripts like `request.sh`.
 
-## `preseed.sh`
+Also `request.sh` saves the variables into `cache/$IP.ip` and sets a softlink to this
+as `cache/$MAC.mac`, such that you can diagnose, what was really created by `request/*.sh`
+and possibly augmented by `ip/$IP.sh`.  Note that `preseed.sh` relies on this information.
+
+
+## Default `preseed.sh`
 
 Serving Debian Preseed files usually is troublesome:
 
@@ -154,6 +183,11 @@ With the help of `preseed.sh` this should become easy:
   - It (somehow) understands the PROXY protocol version 1 of HaProxy
 - `./preseed.sh 9999,bind=1.2.3.4` would listen on `1.2.3.4:9999`
   - The syntax stems from `socat tcp-listen:PORT,bind=HOST`
+- `autostart/preseed.sh` is meant for autostarting it [my way](https://github.com/hilbix/ptybuffer/blob/master/script/autostart.sh)
+  - `ln -s --relative autostart/preseed.sh ~/autostart/preseed-192.168.1.254.sh` for `192.168.1.254:80`
+  - `ln -s --relative autostart/preseed.sh ~/autostart/preseed-192.168.1.254:8080.sh` for `192.168.1.254:8080`
+  - `ln -s --relative autostart/preseed.sh ~/autostart/preseed-:8080.sh` for port `8080` on all interfaces
+  - and so on.
 
 `/etc/haproxy/haproxy.conf`:
 ```
@@ -187,72 +221,87 @@ The default `request.sh` includes all scripts in the `request/` directory
 until one sets the variable `$IP`.  For example see [request/proxmox.sh](request/proxmox.sh)
 
 
-### `request/proxmox.sh`
+### Snapshot comment format
 
-Sadly ProxMox seems not to support user defined values to edit such settings from the UI.
 The best place I found so far is to put everyting into the description of a snapshot.
+
+This works well with `virsh` and ProxMox without need to alter any part of UIs etc.
 
 - Create a VM
 - Create a snapshot
-- Put the settings into the description of the snapshot
+- Put the settings, line by line, into the description of the snapshot
+  - All lines are of the form `_VAR=VALUE`
+  - Other lines are ignored
 
-The snapshots are read from `current` upwards to the root, until one which sets the `IPv4` is found.
+The snapshots are read from `current` upwards to the root, until one which sets the `_IPv4` is found.
 Other snapshots which are not on the straight path are ignored.
 
-Older values do not overwrite newer ones, except for `DHCP`, which are combined.
+Older values do not overwrite newer ones.
+- Except for `_DHCP`, which are combined
 
-Lines are in the format `TAG VALUE`.  Lines with unknown TAGs are ignored.  
+Following `_TAG`s are recognized (see [request/proxmox.sh](request/proxmox.sh)):
 
-Currently only these `TAG`s are recognized (see [request/proxmox.sh](request/proxmox.sh)):
-
-- `IPv4 a.b.c.d` sets the IP.  Search stops after this snapshot.
-- `FILE name` sets the boot filename
-- `SEED codename` sets a special `FILE`: `http://$GW/d-i/$SEED/preseed.cfg`
-  - `$GW` is automatically determined from the `IPv4` given
-- `DHCP` outputs a DHCP option
+- `_IPv4 a.b.c.d` sets the IP.  Search stops after this snapshot.
+- `_HOSTNAME=myhostname` for setting DHCP hostname
+- `_DOMAINNAME=example.com` for setting DHCP domainname
+- `_DNS4=1.1.1.1 8.8.8.8` or similar for setting DHCP DNS servers
+- `_FILE name` sets the boot filename
+- `_SEED codename` sets a special `_FILE`: `http://$_GW/d-i/$SEED/preseed.cfg`
+  - `$_GW` is automatically determined from the `IPv4` given
+- `_DHCP` outputs a DHCP option
   - see `DHCP id type data` above
   - see `struct DHCPoptions` in [dhcp.h](dhcp.h)
+- `_GW` and so on
+- You can create your own variables for use with `preseed.sh`
+  - These can be used in the `.preseed` templates
+  - An example template is `generic.preseed`
 
-This can be extended to your needs in [request/proxmox.sh](request/proxmox.sh).
+> This also can be extended to your needs in [request/proxmox.sh](request/proxmox.sh)
+> if you dare.
 
-
-### `request/virsh.sh`
-
-> This needs Python3 to read XML and convert it to JSON.
-> See `xml2json/` submodule
-
-Works nearly the same as ProxMox:
-
-- Create a VM with snapshot support
-- Create a snapshot
-- Put parameters into the comment
-
-This has been generalized now, such that you can use `preseed.sh` with it:
+You can set variables for use in `preseed.sh`, too:
 
 ```
-IPv4 192.168.1.3
-SEED generic
-HOSTNAME myhostname
-DOMAINNAME example.com
-DNS4 1.1.1.1 8.8.8.8
-USERNAME user
-PASSWORD pw
-APTPROXY http://192.168.1.1:3142
+_IPv4=192.168.1.3
+_SEED=generic
+_HOSTNAME=myhostname
+_DOMAINNAME=example.com
+_DNS4=1.1.1.1 8.8.8.8
+_USERNAME=user
+_PASSWORD=pw
+_APTPROXY=http://192.168.1.1:3142
 ```
 
-With these parameters, `preseed.sh` can then automatically fill `generic.preseed`, too.
+With these additional parameters (starting with `_USERNAME`), `preseed.sh` can then automatically fill `generic.preseed`, too.
 
 Also a script named `ip/192.168.1.3.sh` can be used for additional variable manipulation.
 
+- Do not forget to prefix the variables with `_` (in contrast to what you give in the snapshot comment)
+- `ip/192.168.1._.sh` is tried as fallback
+- `ip/192.168._._.sh` is tried as fallback of the fallback
+- `ip/192._._._.sh` is tried as last resort fallback
+
 Use a softlink as `ip/` to pull in things from another (parental) `git` repo etc.
 
-> `request/proxmox.sh` is not yet updated to this standard, but will follow soon I hope.
+
+### `request/proxmox.sh`
+
+This needs `jq` and `qm` for accessing ProxMox.
+It detects the presence of ProxMox and does nothing if ProxMox is not available.
+
+### `request/virsh.sh`
+
+This needs `virsh`, `jq` and Python3.  To read XML and convert it to JSON it uses `xml2json/` submodule.
+
+> Perhaps other virtualizations can be added a similar way.
+> Contributions welcome, as long as you drop all Copyright on them so I can put it under CLL.
 
 
-### Example
+## Example
 
 > This example assumes
 > - your `virsh` internal interface (`vmbr0`) has IP `192.168.1.1`
+>   - or your ProxMox internal interface (`virbr0`) has IP `192.168.1.1` accordingly
 > - On `192.168.1.1:3142` some `apt-cacher-ng` runs
 >   - If you do not want this, leave `APTPROXY` away
 >   - however then the interface must allow NAT to allow the VM to access Internet directly
@@ -261,39 +310,47 @@ Use a softlink as `ip/` to pull in things from another (parental) `git` repo etc
 
 Define a VM.
 
-- Set it to boot from `debian-12.1.0-amd64-netinst.iso`
-  - probably downloaded from <https://cdimage.debian.org/cdimage/release/12.1.0/amd64/iso-cd/>
-  - **Do not forget to verify it with `SHA512SUMS` authenticated via `SHA512SUMS.sign`**
-  - For a script to do authenticated downloads from some existing Debian, see <https://github.com/hilbix/download-debian>
-- Do not start it
-- As long as it is off, define the first snapshot
-- Name it `INSTALL`
-- Put in the description below
-  ```
-  IPv4 192.168.1.2
-  SEED generic
-  DNS4 1.1.1.1 8.8.8.8
-  HOSTNAME test
-  DOMAINNAME example.com
-  USERNAME myuser
-  PASSWORD somesecret
-  APTPROXY http://192.168.1.1:3142
-  ```
-- Run `./preseed.sh`
-  - Without HaProxy run `./preseed.sh 3142,bind=192.168.1.1` as root (and keep it running!)
-- Run `./bootp vmbr0` as root (and keep it running!)
-  - as seen in [`autostart/bootp.sh`](autostart/bootp.sh)
-  - this is my way to autostart things via [some crude cron script](https://github.com/hilbix/ptybuffer/blob/master/script/autostart.sh)
-  - If this exec fails, you probably already have running some DHCP service on the interface.
-  - Hence you need to run this on some interface which has no DHCP or other things.
-- Open console
+Set it to boot from `debian-12.1.0-amd64-netinst.iso`
+- probably downloaded from <https://cdimage.debian.org/cdimage/release/12.1.0/amd64/iso-cd/>
+- **Do not forget to verify it with `SHA512SUMS` authenticated via `SHA512SUMS.sign`**
+- For a script to do authenticated downloads from some existing Debian, see <https://github.com/hilbix/download-debian>
+
+Do not start it
+
+As long as it is off, define a first snapshot
+- Name it `INSTALL` (or what you suits best)
+
+Put in the description:
+
+```
+_IPv4=192.168.1.2
+_SEED=generic
+_DNS4=1.1.1.1 8.8.8.8
+_HOSTNAME=test
+_DOMAINNAME=example.com
+_USERNAME=myuser
+_PASSWORD=somesecret
+_APTPROXY=http://192.168.1.1:3142
+```
+
+Run `./preseed.sh` (and keep it running!)
+- Without HaProxy run `./preseed.sh 80,bind=192.168.1.1` as root
+
+Run `./bootp vmbr0` as root (and keep it running!)
+- If this exec fails, you probably already have running some DHCP service on the interface.
+- Hence you need to run this on some interface which has no DHCP or other things.
+- To [autostart this my way](https://github.com/hilbix/ptybuffer/blob/master/script/autostart.sh)
+  use something like `ln -s --relative autostart/bootp.sh ~/autostart/boot-vmbr0.sh`
+
+Open console of the VM
 - Start the VM
 - In the console press `a` (Return) `a` (Return)
-- The install should run through completely
+
+The install should now run and finish automatically.
 
 Notes:
 
-- You can use `FILE` instead of `SEED` to give the URL you like (untested)
+- You can use `_FILE` instead of `_SEED` to give the URL you like (untested)
 - I haven't done it yet, but it is possible to create a script to fully automate the install
   - Define a VM
   - Setup snapshot as described above
@@ -303,6 +360,9 @@ Notes:
   - Wait for the VM downloading the preseed file
   - Wait for the VM so stop
   - If something takes too long, signal error (or stop VM and retry)
+- You can further customize things with some (softlinked) directories
+  - `ip/$IP.sh` shell script which can set or manipulate `_*` variables for the IP
+  - `preseed/$_SEED.preseed` to give your own PRSEEED file to `./preseed.sh`
 
 
 ## FAQ
@@ -310,6 +370,12 @@ Notes:
 WTF why?
 
 - Because I got angry
+
+License?
+
+- This Works is placed under the terms of the Copyright Less License,  
+  see file COPYRIGHT.CLL.  USE AT OWN RISK, ABSOLUTELY NO WARRANTY.
+- Read: Free as free beer, free speech and free baby.
 
 Interface?
 
@@ -319,17 +385,29 @@ Interface?
 
 TFTP?
 
-- I am working on it
-- Not sure if here or in separate repo
+- Probably never done
+  - It works for me [with CDROM installs](https://github.com/hilbix/download-debian)
+- Not sure if it would be done here or in separate repo
 
 IPv6?
 
 - This is BOOTP/DHCP.  Hence it is only for IPv4.
-- 
 
-License?
+Softlinks?
 
-- Free as free beer, free speech and free baby.
+- I do not like to configure things in complex configuration files
+- Instead I like to use softlinks and filenames to express configuration
+  - Hence the way I autostart things, etc., just by placing a softlink
+- This also works very well with configuration management like Ansible
+- On Windows I run my things in WSL, which works extremely well
+  - But I doubt HyperV can be easily added to this, too.
+  - Note that I like to be proven wrong ;)
+
+Contact?  Contrib?
+
+- Open Issue or PR on GitHub
+- Eventually I listen
+- Waive your Copyright, else I cannot use your contribution!
 
 Bugs?  TODOs?
 
@@ -338,25 +416,26 @@ Bugs?  TODOs?
 - Be sure to restart `bootp` if it fails
   - It currently relies to the default signal handling
   - It also OOPSes on things it does not understand
-- `SEED` to set the distribution is stupid and should be autodetectable from `ISO`
+- `_SEED` to set the distribution is stupid and should be autodetectable from `ISO`
   - However that is not a `bootp` limitation, it is just not yet scripted
   - You can add it yourself with a bit of scripting if you like
-  - Or vice versa, create some script which sets the ISO based on the `SEED` value
-  - To get the seed use something like `source request/proxmox.sh; get-ip $VMID && echo $seed`
+  - Or vice versa, create some script which sets the ISO based on the `_SEED` value
+  - To get the seed run a DHCP request and then `cat cache/$IP.ip` or `cat cache/$MAC.mac`
 - `VEND` handling should be better
-  - Currently the script has no access to the VEND data from the request
+  - But now that `DHCP` is supported, I do not think it is not worth improving
 - Error processing/output could be improved
+  - Especially debugging
+  - Use the power of shell (AKA `set -x`)
 - Some fields are not handed to the script:
-  - RFC1542 flags field
-  - second field
   - hops
+  - perhaps some other
 - Some fields cannot be changed yet
   - hops
-  - `WANT`ed IP
+  - perhaps some other
 - The script names are hardcoded
   - `request.sh` for requests
-  - `reply.sh` for replies
-  - Example for `reply.sh` is missing
+  - `reply.sh` for processing replies
+  - `reply.sh` is not implemented (as I have found no use for it yet)
 - Default ports (67 and 68) are hardcoded
 - Broadcast address use is hardcoded
 - Broadcast response is partly hardcoded
@@ -365,8 +444,11 @@ Bugs?  TODOs?
 - Barely tested for now
 - This is a bit Debian centric
   - and Proxmox
+  - and `virsh`
   - as I use it this way
 - This is not meant to stick to the DHCP standard
   - It is only meant to be easily hackable to just do what you want
   - So if you break it, you are left alone with all the (missing) parts
+- This could be better documented
+  - However why as long as I am the lonely one using it ..
 
