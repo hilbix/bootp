@@ -46,13 +46,15 @@ bye()
 # returns 0 if found and data was output (else nothing is output)
 walksnaps()
 {
-  local SNAP tag data vals more
+  local SNAP tag data vals more nr
 
-  SNAP="$($1)"
+  SNAP="$($1 0)"
+  nr=0
   while	[ -n "$SNAP" ] || return
-        while	read -ru6 tag data
+        while	IFS== read -ru6 tag data
         do
               #printf '%q %d %q\n' "$VM" "$tag" "$data" >&2
+              : "$tag" "$data"
               case "$tag" in
               (DHCP)		dhcp+=("$data");;
               (IPv4)		IP="$data";;
@@ -60,13 +62,16 @@ walksnaps()
               (*[^A-Z0-9_]*)	;;
               (*)		tag="_$tag"; [ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
               esac
-        done 6< <($2 "$SNAP")
+        done 6< <($2 "$nr" "$SNAP" && echo)
 
-        case "$ip" in
+        : "$IP"
+        case "$IP" in
         (*.*.*.*)	break;;
         esac
   do
-        SNAP="$($3 "$SNAP")"
+        let nr++
+        [ 100 -gt $nr ] || return
+        SNAP="$($3 "$nr" "$SNAP")"
   done
 
   [ 0 = "${#dhcp[@]}" ] || printf 'DHCP %s\n' "${dhcp[@]}"
@@ -87,6 +92,7 @@ def()
   [ -n "$___VAR___" ] && return
   [ 2 -ge $# ] || printf -v ___VAR___ ' %q' "${@:3}"
   printf -v ___VAR___ %s%s "$2" "$___VAR___"
+#  printf '_%q = %q\n' "$1" "$___VAR___" >&2
 }
 
 out()
@@ -111,6 +117,8 @@ request()
   # All cachable variables, except IP, start with _
   for a in request/*.sh
   do
+        set +x
+
         # '' for default
         unset -- ${!_*}
         IP=		# MUST [ip4] interface IPv4.  '-': script did it, 0.0.0.0 to ignore this MAC
@@ -135,6 +143,7 @@ request()
         [ -n "$IP" ] &&
         break
   done
+  set +x
   case "$IP" in
   (-)		exit;;	# script did everything
   ('')		bye no matching VM found 'for' "$MAC";;
@@ -151,7 +160,6 @@ request()
   def	GW	"$GW_IP"
   def	TFTP	"$_GW"
   def	SEED	''
-  def	FILE	"${_SEED:+http://$_GW/d-i/$_SEED/preseed.cfg}"
   def	REPL	''
   def	FLAG	0
   def	SECS	0
@@ -170,11 +178,13 @@ request()
   for a in "$IP" "${IP%.*}.x" "${IP%.*.*}.x.x" "${IP%%.*}.x.x.x"
   do
         [ -s "ip/$a.sh" ] || continue
-        pushd "$ip" >/dev/null &&
+        pushd ip >/dev/null &&
         . "./$a.sh"
         popd >/dev/null
         break
   done
+
+  def	FILE	"${_SEED:+http://$_GW/d-i/$_SEED/preseed.cfg}"
 
   # Do some caching (for preseed.sh etc.)
   for c in IP ${!_*}
@@ -186,7 +196,14 @@ request()
 }
 
 # If it is cached, reuse it a single time
-[ -s "cache/$MAC.mac" ] && . "cache/$MAC.mac" && rm -f "cache/$MAC.mac" || request
+find cache -name '*.mac' -mmin +1 -delete -print >&2
+if	[ -s "cache/$MAC.mac" ] && . "cache/$MAC.mac"
+then
+        printf 'using cached request: %q\n' "$IP" >&2
+else
+        printf 'calculating request: %q\n' "$MAC" >&2
+        time -p request
+fi
 
 arp >&2
 
