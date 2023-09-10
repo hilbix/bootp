@@ -2,5 +2,6 @@ container:
   image: gcc:latest
 
 task:
+  prep-script: git submodule update --init --recursive
   compile-script: make
 
