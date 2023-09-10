@@ -51,17 +51,17 @@ walksnaps()
   SNAP="$($1 0)"
   nr=0
   while	[ -n "$SNAP" ] || return
-        while	IFS== read -ru6 tag data
+        while	IFS== read -ru6 tag data		# _TAG=VALUE
         do
               #printf '%q %d %q\n' "$VM" "$tag" "$data" >&2
               : "$tag" "$data"
               case "$tag" in
-              (_DHCP)		dhcp+=("$data");;
-              (_IPv4)		IP="$data";;
-              ([^_]*)		;;
-              (_[A-Z]*)		;;
-              (*[^A-Z0-9_]*)	;;
-              (*)		tag="_$tag"; [ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
+              (_DHCP)		dhcp+=("$data");;	# remember DHCP, only output if IP found
+              (_IPv4)		IP="$data";;		# IP is handled a special way
+              ([^_]*)		;;			# _TAG must start with _
+              (_[^A-Z]*)	;;			# _TAG must start with _X where X is uppercase letter
+              (*[^A-Z0-9_]*)	;;			# _TAG must be made of uppercase/numbers/underscore
+              (*)		[ -n "${!tag}" ] || eval "$tag=\"\$data\"";;	# standard VARs
               esac
         done 6< <($2 "$nr" "$SNAP" && echo)
 
