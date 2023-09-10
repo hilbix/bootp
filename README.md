@@ -403,6 +403,38 @@ Softlinks?
   - But I doubt HyperV can be easily added to this, too.
   - Note that I like to be proven wrong ;)
 
+Why not CloudInit?
+
+- This here allows to boot or install from authentic sources.
+- Also I need something, which works in an offline lab situation.
+  - All examples I was able to find only referred to some unauthenticated downloads of some more or less untrusted cloud sources.
+  - Exactly 0 of them used the [authenticated mimimum netinstaller `.iso` download](https://github.com/hilbix/download-debian) of Debian out of the box
+  - If anybody can enlighten me how to run things with CloudInit without overly complex pre-setup phase and breaking the trust chain, I would be very, very glad!
+  - **I do not understend why enforcing the trustchain isn't the default requirement for everything we invent today!**
+- Note that I do not even trust what is provided by my own computers.
+  - Hence I even require from my own services to enforce the trust chain.
+  - Always.
+- So I tried to grok how to do install securely with CloudInit
+  - I had a look at many examples found out there.
+  - But all failed miserably for me.
+  - Hence it was easier and faster for me to create this here.
+- To upgrade the install process must be easy
+  - Just download the newest ISO
+  - Authenticate the ISO
+  - Boot into it
+  - Install with it
+- AFAICS CloudInit needs an overly complex preparation of the standard `.iso`
+  - And this process greatly varies from case to case and `.iso` to `.iso`
+  - Hence nobody can expect, that things done today will continue to work tomorrow.
+  - Then you have to find out how and why.
+  - Do you have the time to do so?  I don't!
+- In contrast, this here should continue to work with minimal adaptions
+  - Because I do not expect that BOOTP, DHCP or Preseed see drastic changes
+- The best I found was <https://ubuntu.com/server/docs/install/autoinstall-quickstart> so far
+  - But I dit not manage to adopt this to `virsh` (`virt-manager`) and ProxMox (UI).
+  - And I did not manage to adopt this to other distros like Debian.
+  - Perhaps I am just too dumb to do so.
+
 Contact?  Contrib?
 
 - Open Issue or PR on GitHub
