@@ -54,7 +54,7 @@ request()
         (*)			continue;;
         esac
 
-        snapget && walksnaps snapnext snapinfo snapnext
+        snapget && walksnaps snapnext snapinfo snapnext proxmox VM "$VM"
         return
   done 6< <(grep -il "^net.*=$MAC," "${CONFS[@]}")
   return 1
