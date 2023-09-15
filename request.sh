@@ -48,13 +48,17 @@ walksnaps()
 {
   local SNAP tag data vals more nr
 
+  [ 3 -ge "$#" ] || printf %q "$4" >&2
+  [ 4 -ge "$#" ] || printf ' %q' "${@:5}" >&2
+  [ 3 -ge "$#" ] || printf \\n >&2
+
   SNAP="$($1 0)"
   nr=0
   while	[ -n "$SNAP" ] || return
         while	IFS== read -ru6 tag data		# _TAG=VALUE
         do
               #printf '%q %d %q\n' "$VM" "$tag" "$data" >&2
-              : "$tag" "$data"
+              : "$VM" "$tag" "$data"
               case "$tag" in
               (_DHCP)		dhcp+=("$data");;	# remember DHCP, only output if IP found
               (_IPv4)		IP="$data";;		# IP is handled a special way
