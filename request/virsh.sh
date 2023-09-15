@@ -22,7 +22,7 @@ request()
   while read -ru6 VM
   do
         virsh domiflist "$VM" | grep -q " $MAC\$" || continue
-        walksnaps snapfirst snapinfo snapnext
+        walksnaps snapfirst snapinfo snapnext virsh VM "$VM"
         return
   done 6< <(virsh list --uuid --state-running)
   return 1
