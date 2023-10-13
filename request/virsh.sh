@@ -21,6 +21,7 @@ request()
 {
   while read -ru6 VM
   do
+        [ -n "$VM" ] || continue
         virsh domiflist "$VM" | grep -q " $MAC\$" || continue
         walksnaps snapfirst snapinfo snapnext virsh VM "$VM"
         return
