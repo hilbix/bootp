@@ -274,16 +274,36 @@ _PASSWORD=pw
 _APTPROXY=http://192.168.1.1:3142
 ```
 
-With these additional parameters (starting with `_USERNAME`), `preseed.sh` can then automatically fill `generic.preseed`, too.
+With these additional parameters (starting with `_USERNAME`), `preseed.sh` can then automatically fill `generic.preseed`
+or any other `preseed/$NAME.preseed` file.  Note that `preseed/generic.preseed` takes precedence over `./generic.preseed`.
 
 Also a script named `ip/192.168.1.3.sh` can be used for additional variable manipulation.
 
-- Do not forget to prefix the variables with `_` (in contrast to what you give in the snapshot comment)
+- Do not forget to prefix the variables with `_` (as in the snapshot comment)
 - `ip/192.168.1._.sh` is tried as fallback
 - `ip/192.168._._.sh` is tried as fallback of the fallback
 - `ip/192._._._.sh` is tried as last resort fallback
 
 Use a softlink as `ip/` to pull in things from another (parental) `git` repo etc.
+
+Note that the script in `ip/` can overwrite all variables set by `request/*.sh` script.
+So be sure to use something like following if you want to set some defaults there:
+
+```
+_USERNAME="${_USERNAME:-defaultuser}"
+_PASSWORD="${_PASSWORD:-defaultpassword}"
+```
+
+Side note:  The variables pulled by `preseed.sh` are pulled from `cache/`.
+The latter is filled by `./request.sh`, so be sure after altering `ip/`
+to do at least one DHCP request by the VM to regenerate the variables
+for a VM if looking at the preseed file.
+
+You can debug the preseed file from the VM with something like:
+
+```
+curl "http://$(ip -j r g 0.0.0.1 | jq -r .[].gateway)/d-i/generic/preseed.cfg"
+```
 
 
 ### `request/proxmox.sh`
