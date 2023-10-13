@@ -65,6 +65,25 @@ my_strncpy(char *dest, const char *src, size_t len)
 #pragma GCC diagnostic pop
 }
 
+void
+drop_privilege(void)
+{
+  gid_t	gid;
+  uid_t	uid;
+
+  if (getegid()!=(gid=getgid()))
+    {
+      if (setregid(gid, gid))
+        OOPS("cannot drop privileged GID");
+    }
+  if (geteuid()!=(uid=getuid()))
+    {
+      if (setreuid(uid, uid))
+        OOPS("cannot drop privileged UID");
+    }
+}
+
+
 struct addrinfo *
 get_addr(const char *host, const char *port)
 {
@@ -823,6 +842,8 @@ request(const char *script, void *buf, int *len, struct decoded *decode, struct 
           dup2(fds[1], 1);
           close(fds[1]);
         }
+
+      drop_privilege();
 
       /* feed buffer to script as a child	*/
       if (pipe(fds))
