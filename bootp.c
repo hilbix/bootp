@@ -138,17 +138,19 @@ int
 udp_bc(const char *interface, int port)
 {
   struct sockaddr_in	sa4;
-  int			fd, bc;
+  int			fd, opt;
 
   if ((fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
     OOPS("cannot create UDP socket");
 
-  bc	= 1;
-  if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &bc, sizeof bc) < 0)
-    OOPS("broadcast permission failed");
-
+  opt	= 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &opt, sizeof opt) < 0)
+    OOPS("SO_BROADCAST failed");
+  opt	= 1;
+  if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof opt) < 0)
+    OOPS("SO_REUSEPORT failed");
   if (setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface, strlen(interface)) < 0)
-    OOPS("cannot use interface");
+    OOPS("SO_BINDTODEVICE failed");
 
   sa4.sin_family	= AF_INET;
   sa4.sin_port		= htons(port);
