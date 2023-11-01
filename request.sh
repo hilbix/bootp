@@ -186,7 +186,7 @@ request()
         pushd ip >/dev/null &&
         . "./$a.sh"
         popd >/dev/null
-        break
+        #break	Do not break here, also read more generic ones
   done
 
   def	FILE	"${_SEED:+http://$_GW/d-i/$_SEED/preseed.cfg}"
