@@ -22,7 +22,7 @@ d-i	netcfg/choose_interface			select		auto
 d-i	passwd/root-login			boolean		false
 
 d-i	partman-auto/method			string		lvm
-d-i	partman-auto-lvm/guided_size		string		16G
+d-i	partman-auto-lvm/guided_size		string		8G
 d-i	partman-lvm/confirm_nooverwrite		boolean		true
 
 d-i	partman/choose_partition		select		finish
