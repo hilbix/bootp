@@ -132,6 +132,20 @@ arp()
   /usr/sbin/arp -s -i "$INTERFACE" "$IP" "$ARP" temp
 }
 
+# Augment a bit
+augment()
+{
+  local a
+  for a in "$1" "${1%.*}._" "${1%.*.*}._._" "${1%.*.*.*}._._._" "${1%"${1#*-}"}_._._._"
+  do
+	[ -s "ip/$a.sh" ] || continue
+	pushd ip >/dev/null &&
+	. "./$a.sh"
+	popd >/dev/null
+	#break	Do not break here, also read more generic ones
+  done
+}
+
 # This is run in a subshell to protect against case where something goes horribly wrong.
 # The result (cache/$MAC.mac) must be imported later on
 request()
@@ -171,9 +185,25 @@ request()
 	break
   done
 
+  run	IF_J_A	ip -j -4 a s dev "$INTERFACE"
+  run	IF_IPS	jq -r '.[].addr_info[].local' <<<"$IF_J_A"
+
+  # Try to autodetect the IP if still missing
+  if	read -ra IF_IPs <<<"$IF_IPS" && [ -z "$IP" ]
+  then
+	printf 'autodetect IP for %q from' "$MAC" >&2
+	printf ' %s' "${IF_IPs[@]}" >&2
+	printf '\n' >&2
+#	for debug in NAME INTERFACE ARP FROM MAC TXN SERV; do printf '%10q=%q\n' "$debug" "${!debug}"; done >&2
+	for IF_IP in "${IF_IPs[@]}"
+	do
+		augment "auto-$IF_IP"
+	done
+  fi
+
   case "$IP" in
   (-)		exit;;	# script did everything
-  ('')		macbug no matching VM found 'for';;
+  ('')		macbug no IP found 'for';;
   (0.0.0.0)	macbug ignoring;;
   esac
 
@@ -200,15 +230,7 @@ request()
   IFS=. read a b c d u v w x <<<"$IP.$_MASK" && printf -v BCDEF %d.%d.%d.%d $[ a|(u^255) ] $[ b|(v^255) ] $[ c|(w^255) ] $[ d|(x^255) ]
   def	BC	"$BCDEF"
 
-  # Perhaps augment a bit
-  for a in "$IP" "${IP%.*}._" "${IP%.*.*}._._" "${IP%%.*}._._._"
-  do
-	[ -s "ip/$a.sh" ] || continue
-	pushd ip >/dev/null &&
-	. "./$a.sh"
-	popd >/dev/null
-	#break	Do not break here, also read more generic ones
-  done
+  augment "$IP"
 
   def	FILE	"${_SEED:+http://$_GW/d-i/$_SEED/preseed.cfg}"
 
@@ -218,7 +240,7 @@ request()
 	[ _ = "$c" ] || printf "%q=%q\n" "$c" "${!c}"
   done > "cache/$IP.tmp" &&			# output cache/$IP.cache
   mv -f "cache/$IP.tmp" "cache/$IP.ip" &&	# this hopefully is an atomic rename()
-  ln -fs "cache/$IP.ip" "cache/$MAC.mac"	# create the result
+  ln -fs "$IP.ip" "cache/$MAC.mac"		# create the result
 
   # repeat the stamp
   echo "$MAC $IP" > cache/LAST
@@ -247,20 +269,21 @@ stale 0.4 cache/LAST
 # remove outdated MACs (older than 1 minute) if no more piling up
 [ -e cache/LAST ] || stale 1 cache/ -name '*.mac'
 # reuse last MAC request, such that the lengthy discovery process is not repeated
-if	[ ! -s "cache/$MAC.mac" ]
+if	[ ! -s "cache/$MAC.mac" ] || [ ! -e "cache/$MAC.dhcp" ]
 then
 	printf 'calculating request: %q\n' "$MAC" >&2
 	# This is single threaded, so there are no concurrent evaluations going on here
 	(
 	[ -e "cache/$MAC.trace" ] && set -x
 	time -p request
-	) >&2 || macbug request processing failed with "$?" 'for'
+	) >"cache/$MAC.dhcp" || macbug request processing failed with "$?" 'for'
 else
-	printf 'using cached request: %q\n' "$IP" >&2
+	printf 'using cached request: %q\n' "$MAC" >&2
 fi
 
 # import the result
 [ -s "cache/$MAC.mac" ] && . "cache/$MAC.mac" || macbug invalid or stale data 'for'
+cat "cache/$MAC.dhcp"
 
 arp >&2
 
