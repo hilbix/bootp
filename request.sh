@@ -41,7 +41,7 @@ bye()
 macbug()
 {
   touch cache/BUG "cache/$MAC.bug"
-  rm -f "cache/$MAC.mac"
+  rm -vf "cache/$MAC.mac" >&2
   bye "$@" "$MAC"
 }
 
@@ -137,7 +137,7 @@ arp()
 request()
 {
   # remove possibly stale data
-  rm -f "cache/$MAC.mac"
+  rm -vf "cache/$MAC.mac" >&2
 
   # stamp that we did evaluation.  Do it prematurely
   # in case somethings goes horribly wrong in the next steps
@@ -146,8 +146,6 @@ request()
   # All cachable variables, except IP, start with _
   for a in request/*.sh
   do
-	set +x
-
 	# '' for default
 	unset -- ${!_*}
 	IP=		# MUST [ip4] interface IPv4.  '-': script did it, 0.0.0.0 to ignore this MAC
@@ -172,7 +170,7 @@ request()
 	[ -n "$IP" ] &&
 	break
   done
-  set +x
+
   case "$IP" in
   (-)		exit;;	# script did everything
   ('')		macbug no matching VM found 'for';;
@@ -232,7 +230,7 @@ then
 	stale 0.2 cache/BUG
 else
 	# remove all bugs such that all bugged VMs re-evaluate
-	rm -vf cache/*.bug
+	rm -vf cache/*.bug >&2
 fi
 
 # Ignore bugged MACs
@@ -253,7 +251,10 @@ if	[ ! -s "cache/$MAC.mac" ]
 then
 	printf 'calculating request: %q\n' "$MAC" >&2
 	# This is single threaded, so there are no concurrent evaluations going on here
-	( time -p request ) || macbug request processing failed with "$?" 'for'
+	(
+	[ -e "cache/$MAC.trace" ] && set -x
+	time -p request
+	) >&2 || macbug request processing failed with "$?" 'for'
 else
 	printf 'using cached request: %q\n' "$IP" >&2
 fi
