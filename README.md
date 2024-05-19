@@ -202,7 +202,7 @@ listen  http
 > If you are not familiar with HaProxy, get in touch with it.  It is extremely useful.
 
 `preseed.sh` will convert `/d-i/SEEDNAME/preseed.cfg` into `preseed/SEEDNAME.preseed`
-and will fall back to `SEEDNAME.preseed`.  So if you use `_SEED generic` in the VM settings
+and will fall back to `SEEDNAME.preseed`.  So if you use `_SEED=generic` in the VM settings
 (snapshot comment), it will serve the default `generic.preseed`.
 
 This uses following variables to populate the preseed:
@@ -298,6 +298,13 @@ Side note:  The variables pulled by `preseed.sh` are pulled from `cache/`.
 The latter is filled by `./request.sh`, so be sure after altering `ip/`
 to do at least one DHCP request by the VM to regenerate the variables
 for a VM if looking at the preseed file.
+
+> You can create such a DHCP request with something like
+>
+> `dhcpcd -T` or `dhcpcd -T eth0` or similar.
+>
+> Interestingly this crashes with a SIGSEGV at my side,
+> but it successfully does the DHCP request.
 
 You can debug the preseed file from the VM with something like:
 
