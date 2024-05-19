@@ -83,8 +83,8 @@ The script can send lines to STDOUT to alter the reply:
 	REPL port
 	REPL port ip.to.reply.to
 	DHCP id type data
- 	SECS seconds
-        FLAG flags
+	SECS seconds
+	FLAG flags
 	WANT cia.d.d.r
 
 If some command (except `DHCP`) is given multiply, the last setting survives.
