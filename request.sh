@@ -72,7 +72,7 @@ walksnaps()
   while	[ -n "$SNAP" ] || return
 	while	IFS== read -ru6 tag data		# _TAG=VALUE
 	do
-		#printf '%q %d %q\n' "$VM" "$tag" "$data" >&2
+		#printf 'TAG %d %q %q\n' "$VM" "$tag" "$data" >&2
 		: "$VM" "$tag" "$data"
 		case "$tag" in
 		(_DHCP)		dhcp+=("$data");;	# remember DHCP, only output if IP found
@@ -181,8 +181,7 @@ request()
 
 	. "$a" &&	# import request()
 	request "$@" &&	# run request()
-	[ -n "$IP" ] &&
-	break
+	break		# success if it signals success
   done
 
   run	IF_J_A	ip -j -4 a s dev "$INTERFACE"
