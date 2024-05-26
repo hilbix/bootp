@@ -174,8 +174,8 @@ and possibly augmented by `ip/$IP.sh`.  Note that `preseed.sh` relies on this in
 > To debug/recreate the `cache/$IP.ip`:
 >
 > ```
-> rm -f cache/$IP.ip
-> ssh $USER@$IP sudo dhclient -v
+> rm -f cache/*.dhcp
+> ssh client sudo dhclient -v
 > ```
 >
 > This sends a BOOTP request and triggers `request.sh` to create the removed cache file again
@@ -308,18 +308,31 @@ The latter is filled by `./request.sh`, so be sure after altering `ip/`
 to do at least one DHCP request by the VM to regenerate the variables
 for a VM if looking at the preseed file.
 
-> You can create such a DHCP request with something like
->
-> `dhcpcd -T` or `dhcpcd -T eth0` or similar.
->
-> Interestingly this crashes with a SIGSEGV at my side,
-> but it successfully does the DHCP request.
-
-You can debug the preseed file from the VM with something like:
+To debug the preseed file from the VM use:
 
 ```
 curl "http://$(ip -j r g 0.0.0.1 | jq -r .[].gateway)/d-i/generic/preseed.cfg"
 ```
+
+For this the info must be created or updated first.  This can be done from the client with
+
+```
+sudo dhclient -v
+```
+
+> You can try `dhcpcd -T` > or `dhcpcd -T eth0` or similar if `dhclient` is not available.
+>
+> Interestingly `dhcpcd` crashes with a SIGSEGV at my side,
+> but it successfully does the DHCP request.
+
+For performance reason the cache file is cached for 5 minutes (or so).
+To be sure to get a fresh reply, be sure to remove the timestamps:
+
+```
+rm -f cache/*.dhcp
+```
+
+> This `rm` must be done on the server of course.
 
 
 ### `request/proxmox.sh`
