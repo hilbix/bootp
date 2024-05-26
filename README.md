@@ -314,7 +314,7 @@ To debug the preseed file from the VM use:
 curl "http://$(ip -j r g 0.0.0.1 | jq -r .[].gateway)/d-i/generic/preseed.cfg"
 ```
 
-For this the info must be created or updated first.  This can be done from the client with
+For this the info must be created or updated first.  This can be done from the VM with
 
 ```
 sudo dhclient -v
