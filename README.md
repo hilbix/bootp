@@ -171,6 +171,15 @@ Also `request.sh` saves the variables into `cache/$IP.ip` and sets a softlink to
 as `cache/$MAC.mac`, such that you can diagnose, what was really created by `request/*.sh`
 and possibly augmented by `ip/$IP.sh`.  Note that `preseed.sh` relies on this information.
 
+> To debug/recreate the `cache/$IP.ip`:
+>
+> ```
+> rm -f cache/$IP.ip
+> ssh $USER@$IP sudo dhclient -v
+> ```
+>
+> This sends a BOOTP request and triggers `request.sh` to create the removed cache file again
+
 
 ## Default `preseed.sh`
 
