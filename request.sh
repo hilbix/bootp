@@ -12,7 +12,7 @@
 #printf 'DHCP_TYPE=%q\n' "$DHCP53_bytes" >&2
 #set | grep ^DHCP >&2
 
-NAME="$1"		# hostname (uname -n)
+NAME="$1"		# hostname (uname -n) of the DHCP server
 INTERFACE="$2"		# interface we use
 ARP="$3"		# socket: MAC (Currently faked from $MAC!)
 FROM="$4"		# socket: IP
@@ -57,7 +57,7 @@ stale()
 
 # Some helpers for request() below
 
-# Walk the snapshots via: SNAP=$($1); $2 "$SNAP"; SNAP=$($3 "$SNAP")
+# Walk the snapshots: NR=0; for ( SNAP=$($1 $NR); get_IP $($2 $NR "$SNAP"); SNAP=$($3 $NR "$SNAP") ) NR++
 # returns 0 if found and data was output (else nothing is output)
 walksnaps()
 {
