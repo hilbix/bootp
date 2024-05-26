@@ -15,12 +15,12 @@ CONFS=(/etc/pve/local/qemu-server/*.conf)
 # This runs as a subshell
 snapinfo()
 {
-  printf 'DEBUG: %q arg %q\n' "$@" >&2
+#  printf 'DEBUG: %q arg %q\n' "$@" >&2
   if	[ 0 = "$1" ]
   then
 	# $2 == 'current' here
 	# Dump _PROXMOX_ variables from $conf got in request()
-	mapfile PROXMOX <<<"$conf"
+	mapfile -t PROXMOX <<<"$conf" &&
 	for p in "${PROXMOX[@]}"
 	do
 		pk="${p%%:*}"
@@ -28,7 +28,7 @@ snapinfo()
 		case "$pk" in
 		(*[^a-z0-9A-Z_]*)	printf 'WTF %q: %q\n' "$0" "$p" >&2;;
 		([a-z]*)		printf '_PROXMOX_%s=%s\n' "${pk^^}" "${p#"$pk: "}"
-					printf 'DEBUG %q: %q %q\n' "$pk" "${p#"$pk: "}" >&2
+#					printf 'DEBUG %q: %q %q\n' "$pk" "${p#"$pk: "}" >&2
 					;;
 		esac
 	done
@@ -76,8 +76,11 @@ request()
 	(*)			continue;;
 	esac
 
-	snapget && walksnaps snapnext snapinfo snapnext proxmox VM "$VM"
-	return
+	snapget || continue
+	# inject $conf for snapinfo 0
+	walksnaps snapnext snapinfo snapnext proxmox VM "$VM"
+	# This is an success, even if IP is not set yet
+	return 0
   done 6< <(grep -il "^net.*=$MAC," "${CONFS[@]}")
   return 1
 }
